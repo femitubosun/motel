@@ -41,6 +41,7 @@ interface LogSearch {
 	readonly traceId?: string | null
 	readonly spanId?: string | null
 	readonly body?: string | null
+	readonly lookbackMinutes?: number
 	readonly limit?: number
 	readonly attributeFilters?: Readonly<Record<string, string>>
 }
@@ -53,6 +54,16 @@ interface TraceSearch {
 	readonly attributeFilters?: Readonly<Record<string, string>>
 	readonly lookbackMinutes?: number
 	readonly limit?: number
+}
+
+interface SpanSearch {
+	readonly serviceName?: string | null
+	readonly operation?: string | null
+	readonly parentOperation?: string | null
+	readonly status?: "ok" | "error" | null
+	readonly lookbackMinutes?: number
+	readonly limit?: number
+	readonly attributeFilters?: Readonly<Record<string, string>>
 }
 
 interface TraceStatsSearch extends TraceSearch {
@@ -194,16 +205,19 @@ const buildTrace = (traceId: string, spanRows: readonly SpanRow[]): TraceItem =>
 	}
 }
 
-const buildSpanItem = (traceId: string, spanRows: readonly SpanRow[], spanId: string): SpanItem | null => {
+const buildSpanItems = (traceId: string, spanRows: readonly SpanRow[]): readonly SpanItem[] => {
 	const trace = buildTrace(traceId, spanRows)
-	const span = trace.spans.find((candidate) => candidate.spanId === spanId)
-	if (!span) return null
-	return {
+	const spanById = new Map(trace.spans.map((span) => [span.spanId, span]))
+	return trace.spans.map((span) => ({
 		traceId,
 		rootOperationName: trace.rootOperationName,
+		parentOperationName: span.parentSpanId ? spanById.get(span.parentSpanId)?.operationName ?? null : null,
 		span,
-	}
+	}))
 }
+
+const buildSpanItem = (traceId: string, spanRows: readonly SpanRow[], spanId: string): SpanItem | null =>
+	buildSpanItems(traceId, spanRows).find((item) => item.span.spanId === spanId) ?? null
 
 const matchesAttributes = (attributes: Readonly<Record<string, string>>, filters: Readonly<Record<string, string>> | undefined) =>
 	!filters || Object.entries(filters).every(([key, value]) => attributes[key] === value)
@@ -226,6 +240,8 @@ export class TelemetryStore extends ServiceMap.Service<
 		readonly traceStats: (input: TraceStatsSearch) => Effect.Effect<readonly StatsItem[], Error>
 		readonly getTrace: (traceId: string) => Effect.Effect<TraceItem | null, Error>
 		readonly getSpan: (spanId: string) => Effect.Effect<SpanItem | null, Error>
+		readonly listTraceSpans: (traceId: string) => Effect.Effect<readonly SpanItem[], Error>
+		readonly searchSpans: (input: SpanSearch) => Effect.Effect<readonly SpanItem[], Error>
 		readonly searchLogs: (input: LogSearch) => Effect.Effect<readonly LogItem[], Error>
 		readonly logStats: (input: LogStatsSearch) => Effect.Effect<readonly StatsItem[], Error>
 		readonly listFacets: (input: FacetSearch) => Effect.Effect<readonly FacetItem[], Error>
@@ -525,6 +541,84 @@ export const TelemetryStoreLive = Layer.effect(
 			})
 		})
 
+		const listTraceSpans = Effect.fn("leto/TelemetryStore.listTraceSpans")(function* (traceId: string) {
+			return yield* Effect.sync(() => {
+				const rows = db.query(`SELECT * FROM spans WHERE trace_id = ? ORDER BY start_time_ms ASC`).all(traceId) as SpanRow[]
+				return rows.length === 0 ? [] as readonly SpanItem[] : buildSpanItems(traceId, rows)
+			})
+		})
+
+		const searchSpans = Effect.fn("leto/TelemetryStore.searchSpans")(function* (input: SpanSearch) {
+			const cutoff = (yield* Clock.currentTimeMillis) - (input.lookbackMinutes ?? config.otel.traceLookbackMinutes) * 60 * 1000
+			const limit = input.limit ?? 100
+			const candidateLimit = Object.keys(input.attributeFilters ?? {}).length > 0 ? Math.max(limit * 20, 500) : Math.max(limit * 10, 200)
+
+			return yield* Effect.sync(() => {
+				const clauses: string[] = ["start_time_ms >= ?"]
+				const params: Array<string | number> = [cutoff]
+
+				if (input.serviceName) {
+					clauses.push("service_name = ?")
+					params.push(input.serviceName)
+				}
+				if (input.operation) {
+					clauses.push("operation_name LIKE ?")
+					params.push(`%${input.operation}%`)
+				}
+				if (input.status) {
+					clauses.push("status = ?")
+					params.push(input.status)
+				}
+
+				const rows = db.query(`
+					SELECT trace_id, span_id
+					FROM spans
+					WHERE ${clauses.join(" AND ")}
+					ORDER BY start_time_ms DESC
+					LIMIT ?
+				`).all(...params, candidateLimit) as Array<{ trace_id: string; span_id: string }>
+
+				const traceIds = [...new Set(rows.map((row) => row.trace_id))]
+				if (traceIds.length === 0) return [] as readonly SpanItem[]
+
+				const placeholders = traceIds.map(() => "?").join(", ")
+				const spanRows = db.query(`
+					SELECT * FROM spans
+					WHERE trace_id IN (${placeholders})
+					ORDER BY start_time_ms ASC
+				`).all(...traceIds) as SpanRow[]
+
+				const grouped = new Map<string, SpanRow[]>()
+				for (const row of spanRows) {
+					const group = grouped.get(row.trace_id) ?? []
+					group.push(row)
+					grouped.set(row.trace_id, group)
+				}
+
+				const itemById = new Map<string, SpanItem>()
+				for (const traceId of traceIds) {
+					const traceSpanRows = grouped.get(traceId)
+					if (!traceSpanRows) continue
+					for (const item of buildSpanItems(traceId, traceSpanRows)) {
+						itemById.set(item.span.spanId, item)
+					}
+				}
+
+				return rows
+					.map((row) => itemById.get(row.span_id))
+					.filter((item): item is SpanItem => item !== undefined)
+					.filter((item) => {
+						if (input.parentOperation) {
+							const needle = input.parentOperation.toLowerCase()
+							if (!item.parentOperationName?.toLowerCase().includes(needle)) return false
+						}
+						if (input.attributeFilters && !matchesAttributes(item.span.tags, input.attributeFilters)) return false
+						return true
+					})
+					.slice(0, limit)
+			})
+		})
+
 		const searchTraces = Effect.fn("leto/TelemetryStore.searchTraces")(function* (input: TraceSearch) {
 
 			const cutoff = (yield* Clock.currentTimeMillis) - (input.lookbackMinutes ?? config.otel.traceLookbackMinutes) * 60 * 1000
@@ -607,6 +701,11 @@ export const TelemetryStoreLive = Layer.effect(
 				if (input.body) {
 					clauses.push(`body LIKE ?`)
 					params.push(`%${input.body}%`)
+				}
+				if (input.lookbackMinutes) {
+					const cutoff = Date.now() - input.lookbackMinutes * 60 * 1000
+					clauses.push(`timestamp_ms >= ?`)
+					params.push(cutoff)
 				}
 
 				const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : ""
@@ -813,6 +912,8 @@ export const TelemetryStoreLive = Layer.effect(
 			traceStats,
 			getTrace,
 			getSpan,
+			listTraceSpans,
+			searchSpans,
 			searchLogs,
 			logStats,
 			listFacets,

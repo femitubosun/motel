@@ -1,6 +1,7 @@
 import { Effect } from "effect"
 import { config, parsePositiveInt, resolveOtelUrl } from "./config.js"
 import { letoOpenApiSpec } from "./httpApi.js"
+import { attributeFiltersFromEntries, ATTRIBUTE_FILTER_PREFIX } from "./queryFilters.js"
 import { storeRuntime } from "./runtime.js"
 import { TelemetryStore } from "./services/TelemetryStore.js"
 import type { LogItem, TraceItem, TraceSummaryItem } from "./domain.js"
@@ -51,10 +52,8 @@ const parseLookbackMinutes = (value: string | null, fallback: number) => {
 const parseBoundedLookbackMinutes = (value: string | null, fallback: number, max: number) => clamp(parseLookbackMinutes(value, fallback), 1, max)
 
 const attributeFiltersFromQuery = (url: URL) =>
-	Object.fromEntries(
-		[...url.searchParams.entries()]
-			.filter(([key]) => key.startsWith("attr."))
-			.map(([key, value]) => [key.slice("attr.".length), value]),
+	attributeFiltersFromEntries(
+		[...url.searchParams.entries()].filter(([key]) => key.startsWith(ATTRIBUTE_FILTER_PREFIX)),
 	)
 
 type CursorShape =
@@ -116,6 +115,54 @@ const listMeta = (input: { readonly limit: number; readonly lookbackMinutes: num
 	truncated: input.truncated,
 	nextCursor: input.nextCursor,
 })
+
+const paginateLogs = (logs: readonly LogItem[], options: { readonly limit: number; readonly lookbackMinutes: number; readonly cursor: CursorShape | null }) => {
+	const scoped = applyLogCursor(logs, options.cursor)
+	const page = scoped.slice(0, options.limit)
+	const last = page.at(-1)
+
+	return {
+		data: page,
+		meta: listMeta({
+			limit: options.limit,
+			lookbackMinutes: options.lookbackMinutes,
+			returned: page.length,
+			truncated: scoped.length > page.length,
+			nextCursor: last ? encodeCursor({ kind: "log", timestamp: last.timestamp.getTime(), id: last.id }) : null,
+		}),
+	}
+}
+
+const loadLogsPage = async (input: {
+	readonly serviceName?: string | null
+	readonly traceId?: string | null
+	readonly spanId?: string | null
+	readonly body?: string | null
+	readonly attributeFilters?: Readonly<Record<string, string>>
+	readonly limit: number
+	readonly lookbackMinutes: number
+	readonly cursor: CursorShape | null
+}) => {
+	const logs = await storeRuntime.runPromise(
+		buildStoreEffect((store) =>
+			store.searchLogs({
+				serviceName: input.serviceName,
+				traceId: input.traceId,
+				spanId: input.spanId,
+				body: input.body,
+				lookbackMinutes: input.lookbackMinutes,
+				limit: LOG_MAX_LIMIT + 1,
+				attributeFilters: input.attributeFilters,
+			}),
+		),
+	)
+
+	return paginateLogs(logs, {
+		limit: input.limit,
+		lookbackMinutes: input.lookbackMinutes,
+		cursor: input.cursor,
+	})
+}
 
 const escapeHtml = (value: string) =>
 	value
@@ -196,7 +243,7 @@ const handleRequest = async (request: Request) => {
 
 	try {
 		if (request.method === "GET" && path === "/") {
-			return text(`leto local telemetry server\n\nPOST /v1/traces\nPOST /v1/logs\nGET /api/services\nGET /api/traces\nGET /api/traces/search\nGET /api/traces/stats\nGET /api/traces/<trace-id>\nGET /api/traces/<trace-id>/logs\nGET /api/spans/<span-id>\nGET /api/logs\nGET /api/logs/search\nGET /api/logs/stats\nGET /api/facets?type=logs&field=severity\nGET /openapi.json\nGET /docs\nGET /trace/<trace-id>\n`)
+			return text(`leto local telemetry server\n\nPOST /v1/traces\nPOST /v1/logs\nGET /api/services\nGET /api/traces\nGET /api/traces/search\nGET /api/traces/stats\nGET /api/traces/<trace-id>\nGET /api/traces/<trace-id>/spans\nGET /api/traces/<trace-id>/logs\nGET /api/spans/search\nGET /api/spans/<span-id>\nGET /api/spans/<span-id>/logs\nGET /api/logs\nGET /api/logs/search\nGET /api/logs/stats\nGET /api/facets?type=logs&field=severity\nGET /openapi.json\nGET /docs\nGET /trace/<trace-id>\n`)
 		}
 
 		if (request.method === "GET" && path === "/openapi.json") {
@@ -303,6 +350,7 @@ const handleRequest = async (request: Request) => {
 			const attributeFilters = attributeFiltersFromQuery(url)
 			const groupBy = url.searchParams.get("groupBy")
 			const agg = url.searchParams.get("agg")
+			const lookbackMinutes = parseBoundedLookbackMinutes(url.searchParams.get("lookback"), TRACE_DEFAULT_LOOKBACK, TRACE_MAX_LOOKBACK)
 			if (!groupBy || (agg !== "count" && agg !== "avg_duration" && agg !== "p95_duration" && agg !== "error_rate")) {
 				return json({ error: "Expected groupBy and agg=count|avg_duration|p95_duration|error_rate" }, 400)
 			}
@@ -317,18 +365,65 @@ const handleRequest = async (request: Request) => {
 						status: (url.searchParams.get("status") as "ok" | "error" | null) ?? null,
 						minDurationMs: url.searchParams.get("minDurationMs") ? Number.parseFloat(url.searchParams.get("minDurationMs") ?? "") : null,
 						attributeFilters,
-						limit: parseLimit(url.searchParams.get("limit"), 20),
-						lookbackMinutes: parseLookbackMinutes(url.searchParams.get("lookback"), config.otel.traceLookbackMinutes),
+						limit: parseBoundedLimit(url.searchParams.get("limit"), 20, TRACE_MAX_LIMIT),
+						lookbackMinutes,
 					}),
 				),
 			)
 			return json({ data })
 		}
 
+		if (request.method === "GET" && path === "/api/spans/search") {
+			const attributeFilters = attributeFiltersFromQuery(url)
+			const limit = parseBoundedLimit(url.searchParams.get("limit"), LOG_DEFAULT_LIMIT, LOG_MAX_LIMIT)
+			const lookbackMinutes = parseBoundedLookbackMinutes(url.searchParams.get("lookback"), TRACE_DEFAULT_LOOKBACK, TRACE_MAX_LOOKBACK)
+			const data = await storeRuntime.runPromise(
+				buildStoreEffect((store) =>
+					store.searchSpans({
+						serviceName: url.searchParams.get("service"),
+						operation: url.searchParams.get("operation"),
+						parentOperation: url.searchParams.get("parentOperation"),
+						status: (url.searchParams.get("status") as "ok" | "error" | null) ?? null,
+						attributeFilters,
+						limit: limit + 1,
+						lookbackMinutes,
+					}),
+				),
+			)
+			const truncated = data.length > limit
+			const page = truncated ? data.slice(0, limit) : data
+			return json({
+				data: page,
+				meta: listMeta({
+					limit,
+					lookbackMinutes,
+					returned: page.length,
+					truncated,
+					nextCursor: null,
+				}),
+			})
+		}
+
 		if (request.method === "GET" && path.startsWith("/api/traces/") && path.endsWith("/logs")) {
 			const traceId = decodeURIComponent(path.slice("/api/traces/".length, -"/logs".length))
-			const data = await storeRuntime.runPromise(buildStoreEffect((store) => store.listTraceLogs(traceId)))
+			const lookbackMinutes = parseBoundedLookbackMinutes(url.searchParams.get("lookback"), LOG_DEFAULT_LOOKBACK, LOG_MAX_LOOKBACK)
+			const limit = parseBoundedLimit(url.searchParams.get("limit"), LOG_DEFAULT_LIMIT, LOG_MAX_LIMIT)
+			const cursor = decodeCursor(url.searchParams.get("cursor"))
+			return json(await loadLogsPage({ traceId, limit, lookbackMinutes, cursor }))
+		}
+
+		if (request.method === "GET" && path.startsWith("/api/traces/") && path.endsWith("/spans")) {
+			const traceId = decodeURIComponent(path.slice("/api/traces/".length, -"/spans".length))
+			const data = await storeRuntime.runPromise(buildStoreEffect((store) => store.listTraceSpans(traceId)))
 			return json({ data })
+		}
+
+		if (request.method === "GET" && path.startsWith("/api/spans/") && path.endsWith("/logs")) {
+			const spanId = decodeURIComponent(path.slice("/api/spans/".length, -"/logs".length))
+			const lookbackMinutes = parseBoundedLookbackMinutes(url.searchParams.get("lookback"), LOG_DEFAULT_LOOKBACK, LOG_MAX_LOOKBACK)
+			const limit = parseBoundedLimit(url.searchParams.get("limit"), LOG_DEFAULT_LIMIT, LOG_MAX_LIMIT)
+			const cursor = decodeCursor(url.searchParams.get("cursor"))
+			return json(await loadLogsPage({ spanId, limit, lookbackMinutes, cursor }))
 		}
 
 		if (request.method === "GET" && path.startsWith("/api/spans/")) {
@@ -349,33 +444,16 @@ const handleRequest = async (request: Request) => {
 			const lookbackMinutes = parseBoundedLookbackMinutes(url.searchParams.get("lookback"), LOG_DEFAULT_LOOKBACK, LOG_MAX_LOOKBACK)
 			const cursor = decodeCursor(url.searchParams.get("cursor"))
 
-			const data = await storeRuntime.runPromise(
-				buildStoreEffect((store) =>
-					store.searchLogs({
-						serviceName: url.searchParams.get("service"),
-						traceId: url.searchParams.get("traceId"),
-						spanId: url.searchParams.get("spanId"),
-						body: url.searchParams.get("body"),
-						limit: LOG_MAX_LIMIT + 1,
-						attributeFilters,
-					}),
-				),
-			)
-
-			const filteredByLookback = data.filter((log) => Date.now() - log.timestamp.getTime() <= lookbackMinutes * 60_000)
-			const scoped = applyLogCursor(filteredByLookback, cursor)
-			const page = scoped.slice(0, limit)
-			const last = page.at(-1)
-			return json({
-				data: page,
-				meta: listMeta({
-					limit,
-					lookbackMinutes,
-					returned: page.length,
-					truncated: scoped.length > page.length,
-					nextCursor: last ? encodeCursor({ kind: "log", timestamp: last.timestamp.getTime(), id: last.id }) : null,
-				}),
-			})
+			return json(await loadLogsPage({
+				serviceName: url.searchParams.get("service"),
+				traceId: url.searchParams.get("traceId"),
+				spanId: url.searchParams.get("spanId"),
+				body: url.searchParams.get("body"),
+				attributeFilters,
+				limit,
+				lookbackMinutes,
+				cursor,
+			}))
 		}
 
 		if (request.method === "GET" && path === "/api/logs/search") {
@@ -384,76 +462,23 @@ const handleRequest = async (request: Request) => {
 			const lookbackMinutes = parseBoundedLookbackMinutes(url.searchParams.get("lookback"), LOG_DEFAULT_LOOKBACK, LOG_MAX_LOOKBACK)
 			const cursor = decodeCursor(url.searchParams.get("cursor"))
 
-			const data = await storeRuntime.runPromise(
-				buildStoreEffect((store) =>
-					store.searchLogs({
-						serviceName: url.searchParams.get("service"),
-						traceId: url.searchParams.get("traceId"),
-						spanId: url.searchParams.get("spanId"),
-						body: url.searchParams.get("body"),
-						limit: LOG_MAX_LIMIT + 1,
-						attributeFilters,
-					}),
-				),
-			)
-
-			const filteredByLookback = data.filter((log) => Date.now() - log.timestamp.getTime() <= lookbackMinutes * 60_000)
-			const scoped = applyLogCursor(filteredByLookback, cursor)
-			const page = scoped.slice(0, limit)
-			const last = page.at(-1)
-
-			return json({
-				data: page,
-				meta: listMeta({
-					limit,
-					lookbackMinutes,
-					returned: page.length,
-					truncated: scoped.length > page.length,
-					nextCursor: last ? encodeCursor({ kind: "log", timestamp: last.timestamp.getTime(), id: last.id }) : null,
-				}),
-			})
-		}
-
-		if (request.method === "GET" && path === "/api/logs/search") {
-			const attributeFilters = attributeFiltersFromQuery(url)
-			const limit = parseBoundedLimit(url.searchParams.get("limit"), LOG_DEFAULT_LIMIT, LOG_MAX_LIMIT)
-			const lookbackMinutes = parseBoundedLookbackMinutes(url.searchParams.get("lookback"), LOG_DEFAULT_LOOKBACK, LOG_MAX_LOOKBACK)
-			const cursor = decodeCursor(url.searchParams.get("cursor"))
-
-			const data = await storeRuntime.runPromise(
-				buildStoreEffect((store) =>
-					store.searchLogs({
-						serviceName: url.searchParams.get("service"),
-						traceId: url.searchParams.get("traceId"),
-						spanId: url.searchParams.get("spanId"),
-						body: url.searchParams.get("body"),
-						limit: LOG_MAX_LIMIT + 1,
-						attributeFilters,
-					}),
-				),
-			)
-
-			const filteredByLookback = data.filter((log) => Date.now() - log.timestamp.getTime() <= lookbackMinutes * 60_000)
-			const scoped = applyLogCursor(filteredByLookback, cursor)
-			const page = scoped.slice(0, limit)
-			const last = page.at(-1)
-
-			return json({
-				data: page,
-				meta: listMeta({
-					limit,
-					lookbackMinutes,
-					returned: page.length,
-					truncated: scoped.length > page.length,
-					nextCursor: last ? encodeCursor({ kind: "log", timestamp: last.timestamp.getTime(), id: last.id }) : null,
-				}),
-			})
+			return json(await loadLogsPage({
+				serviceName: url.searchParams.get("service"),
+				traceId: url.searchParams.get("traceId"),
+				spanId: url.searchParams.get("spanId"),
+				body: url.searchParams.get("body"),
+				attributeFilters,
+				limit,
+				lookbackMinutes,
+				cursor,
+			}))
 		}
 
 		if (request.method === "GET" && path === "/api/logs/stats") {
 			const attributeFilters = attributeFiltersFromQuery(url)
 			const groupBy = url.searchParams.get("groupBy")
 			const agg = url.searchParams.get("agg")
+			const lookbackMinutes = parseBoundedLookbackMinutes(url.searchParams.get("lookback"), LOG_DEFAULT_LOOKBACK, LOG_MAX_LOOKBACK)
 			if (!groupBy || agg !== "count") {
 				return json({ error: "Expected groupBy and agg=count" }, 400)
 			}
@@ -469,6 +494,7 @@ const handleRequest = async (request: Request) => {
 						body: url.searchParams.get("body"),
 						attributeFilters,
 						limit: parseBoundedLimit(url.searchParams.get("limit"), 20, LOG_MAX_LIMIT),
+						lookbackMinutes,
 					}),
 				),
 			)
