@@ -1,4 +1,4 @@
-# leto
+# motel
 
 OpenTUI local OTEL viewer for development, with a local SQLite-backed telemetry server, correlated traces, and logs.
 
@@ -25,7 +25,7 @@ OpenTUI local OTEL viewer for development, with a local SQLite-backed telemetry 
 
 This repo uses one local Bun server with SQLite storage. No Docker is required.
 
-- leto local API / UI base: `http://127.0.0.1:27686`
+- motel local API / UI base: `http://127.0.0.1:27686`
 - OTLP HTTP traces: `http://127.0.0.1:27686/v1/traces`
 - OTLP HTTP logs: `http://127.0.0.1:27686/v1/logs`
 - health: `http://127.0.0.1:27686/api/health`
@@ -76,21 +76,21 @@ http://127.0.0.1:27686/docs
 
 ## How It Works
 
-`leto` now has one local service process:
+`motel` now has one local service process:
 
 - the local Bun server receives OTLP traces and logs on `http://127.0.0.1:27686`
-- it stores telemetry in SQLite at `.leto-data/telemetry.sqlite`
+- it stores telemetry in SQLite at `.motel-data/telemetry.sqlite`
 - it exposes query endpoints on the same base URL
 
-So yes: another service has to point its OTEL exporters at this local leto instance.
+So yes: another service has to point its OTEL exporters at this local motel instance.
 
 The easiest flow is:
 
 1. Run `bun run dev` here. That starts the local server if needed and then launches the TUI.
-2. In `leto`, press `c`.
+2. In `motel`, press `c`.
 3. Paste the copied instructions into an agent working in the other service.
 4. Have that service export OTEL traces to `http://127.0.0.1:27686/v1/traces` and OTEL logs to `http://127.0.0.1:27686/v1/logs`.
-5. Refresh `leto`, switch to that service with `[` / `]`, and use `l` or `enter` to inspect logs under a trace or span.
+5. Refresh `motel`, switch to that service with `[` / `]`, and use `l` or `enter` to inspect logs under a trace or span.
 
 ## For Agents
 
@@ -100,7 +100,7 @@ List and search endpoints now return a `meta` object with `limit`, `lookback`, `
 
 Use one of these:
 
-1. leto HTTP API directly
+1. motel HTTP API directly
 
 ```bash
 curl http://127.0.0.1:27686/api/services
@@ -130,7 +130,7 @@ bun run instructions
 
 Recommended shape going forward:
 
-1. Keep leto as the single ingest point for apps.
+1. Keep motel as the single ingest point for apps.
 2. Keep SQLite as the local source of truth.
-3. Keep `leto` as the interactive viewer.
+3. Keep `motel` as the interactive viewer.
 4. Keep the CLI and HTTP API as the agent/script interfaces.

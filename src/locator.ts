@@ -9,7 +9,7 @@ export class LocatorError extends Error {
 }
 
 const ambiguousDetail = (candidates: readonly RegistryEntry[]) =>
-	`Multiple leto instances running and none match cwd. Set LETO_URL to choose one:\n` +
+	`Multiple motel instances running and none match cwd. Set MOTEL_URL to choose one:\n` +
 	candidates.map((c) => `  - ${c.url}  (workdir=${c.workdir}, pid=${c.pid})`).join("\n")
 
 type Resolved = {
@@ -39,8 +39,8 @@ const handshake = (url: string): Effect.Effect<HealthShape, LocatorError> =>
 			})
 			if (!res.ok) throw new Error(`HTTP ${res.status}`)
 			const body = (await res.json()) as HealthShape
-			if (body.service !== "leto-local-server") {
-				throw new Error(`service=${body.service} (expected leto-local-server)`)
+			if (body.service !== "motel-local-server") {
+				throw new Error(`service=${body.service} (expected motel-local-server)`)
 			}
 			return body
 		},
@@ -59,7 +59,7 @@ const pickByCwd = (entries: readonly RegistryEntry[], cwd: string) => {
 }
 
 const discover = Effect.fn("Locator.discover")(function* () {
-	const envUrl = process.env.LETO_URL?.trim()
+	const envUrl = process.env.MOTEL_URL?.trim()
 	if (envUrl) {
 		const health = yield* handshake(envUrl)
 		return {
@@ -78,7 +78,7 @@ const discover = Effect.fn("Locator.discover")(function* () {
 	if (all.length === 0) {
 		return yield* Effect.fail(
 			new LocatorError(
-				"No leto instance found. Start one with `bun run server` from your project root, then retry.",
+				"No motel instance found. Start one with `bun run server` from your project root, then retry.",
 			),
 		)
 	}
@@ -118,7 +118,7 @@ export class Locator extends ServiceMap.Service<
 		readonly resolve: Effect.Effect<Resolved, LocatorError>
 		readonly invalidate: Effect.Effect<void>
 	}
->()("leto/Locator") {}
+>()("motel/Locator") {}
 
 export const LocatorLive = Layer.effect(
 	Locator,

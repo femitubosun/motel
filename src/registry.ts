@@ -2,12 +2,12 @@ import * as fs from "node:fs"
 import * as os from "node:os"
 import * as path from "node:path"
 
-export const LETO_VERSION = "0.1.0"
+export const MOTEL_VERSION = "0.1.0"
 
 const stateHome = () =>
 	process.env.XDG_STATE_HOME?.trim() || path.join(os.homedir(), ".local", "state")
 
-export const registryDir = () => path.join(stateHome(), "leto", "instances")
+export const registryDir = () => path.join(stateHome(), "motel", "instances")
 
 export type RegistryEntry = {
 	readonly pid: number

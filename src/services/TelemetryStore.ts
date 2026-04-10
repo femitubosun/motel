@@ -248,7 +248,7 @@ export class TelemetryStore extends ServiceMap.Service<
 		readonly listRecentLogs: (serviceName: string) => Effect.Effect<readonly LogItem[], Error>
 		readonly listTraceLogs: (traceId: string) => Effect.Effect<readonly LogItem[], Error>
 	}
->()("leto/TelemetryStore") {}
+>()("motel/TelemetryStore") {}
 
 export interface TelemetryStoreOptions {
 	readonly databasePath: string
@@ -347,7 +347,7 @@ export const TelemetryStoreLive = Layer.effect(
 
 		const maxDbSizeBytes = config.otel.maxDbSizeMb * 1024 * 1024
 
-		const cleanupExpired = Effect.fn("leto/TelemetryStore.cleanupExpired")(function* () {
+		const cleanupExpired = Effect.fn("motel/TelemetryStore.cleanupExpired")(function* () {
 			const now = yield* Clock.currentTimeMillis
 
 			yield* Effect.sync(() => {
@@ -374,7 +374,7 @@ export const TelemetryStoreLive = Layer.effect(
 		// Run cleanup every 60 seconds in the background, tied to the layer's scope
 		yield* Effect.forkScoped(Effect.repeat(cleanupExpired(), Schedule.spaced("60 seconds")))
 
-		const ingestTraces = Effect.fn("leto/TelemetryStore.ingestTraces")(function* (payload: OtlpTraceExportRequest) {
+		const ingestTraces = Effect.fn("motel/TelemetryStore.ingestTraces")(function* (payload: OtlpTraceExportRequest) {
 
 
 			return yield* Effect.sync(() => {
@@ -423,7 +423,7 @@ export const TelemetryStoreLive = Layer.effect(
 			})
 		})
 
-		const ingestLogs = Effect.fn("leto/TelemetryStore.ingestLogs")(function* (payload: OtlpLogExportRequest) {
+		const ingestLogs = Effect.fn("motel/TelemetryStore.ingestLogs")(function* (payload: OtlpLogExportRequest) {
 
 
 			return yield* Effect.sync(() => {
@@ -461,7 +461,7 @@ export const TelemetryStoreLive = Layer.effect(
 			})
 		})
 
-		const listServices = Effect.fn("leto/TelemetryStore.listServices")(function* () {
+		const listServices = Effect.fn("motel/TelemetryStore.listServices")(function* () {
 
 			const cutoff = (yield* Clock.currentTimeMillis) - config.otel.traceLookbackMinutes * 60 * 1000
 			return yield* Effect.sync(() => {
@@ -475,7 +475,7 @@ export const TelemetryStoreLive = Layer.effect(
 			})
 		})()
 
-		const listRecentTraces = Effect.fn("leto/TelemetryStore.listRecentTraces")(function* (serviceName: string | null, options?: { readonly lookbackMinutes?: number; readonly limit?: number }) {
+		const listRecentTraces = Effect.fn("motel/TelemetryStore.listRecentTraces")(function* (serviceName: string | null, options?: { readonly lookbackMinutes?: number; readonly limit?: number }) {
 
 			const cutoff = (yield* Clock.currentTimeMillis) - (options?.lookbackMinutes ?? config.otel.traceLookbackMinutes) * 60 * 1000
 			const limit = options?.limit ?? config.otel.traceFetchLimit
@@ -523,7 +523,7 @@ export const TelemetryStoreLive = Layer.effect(
 			})
 		})
 
-		const getTrace = Effect.fn("leto/TelemetryStore.getTrace")(function* (traceId: string) {
+		const getTrace = Effect.fn("motel/TelemetryStore.getTrace")(function* (traceId: string) {
 			return yield* Effect.sync(() => {
 				const rows = db.query(`
 					SELECT * FROM spans WHERE trace_id = ? ORDER BY start_time_ms ASC
@@ -532,7 +532,7 @@ export const TelemetryStoreLive = Layer.effect(
 			})
 		})
 
-		const getSpan = Effect.fn("leto/TelemetryStore.getSpan")(function* (spanId: string) {
+		const getSpan = Effect.fn("motel/TelemetryStore.getSpan")(function* (spanId: string) {
 			return yield* Effect.sync(() => {
 				const row = db.query(`SELECT trace_id FROM spans WHERE span_id = ? LIMIT 1`).get(spanId) as { trace_id: string } | null
 				if (!row) return null
@@ -541,14 +541,14 @@ export const TelemetryStoreLive = Layer.effect(
 			})
 		})
 
-		const listTraceSpans = Effect.fn("leto/TelemetryStore.listTraceSpans")(function* (traceId: string) {
+		const listTraceSpans = Effect.fn("motel/TelemetryStore.listTraceSpans")(function* (traceId: string) {
 			return yield* Effect.sync(() => {
 				const rows = db.query(`SELECT * FROM spans WHERE trace_id = ? ORDER BY start_time_ms ASC`).all(traceId) as SpanRow[]
 				return rows.length === 0 ? [] as readonly SpanItem[] : buildSpanItems(traceId, rows)
 			})
 		})
 
-		const searchSpans = Effect.fn("leto/TelemetryStore.searchSpans")(function* (input: SpanSearch) {
+		const searchSpans = Effect.fn("motel/TelemetryStore.searchSpans")(function* (input: SpanSearch) {
 			const cutoff = (yield* Clock.currentTimeMillis) - (input.lookbackMinutes ?? config.otel.traceLookbackMinutes) * 60 * 1000
 			const limit = input.limit ?? 100
 			const candidateLimit = Object.keys(input.attributeFilters ?? {}).length > 0 ? Math.max(limit * 20, 500) : Math.max(limit * 10, 200)
@@ -619,7 +619,7 @@ export const TelemetryStoreLive = Layer.effect(
 			})
 		})
 
-		const searchTraces = Effect.fn("leto/TelemetryStore.searchTraces")(function* (input: TraceSearch) {
+		const searchTraces = Effect.fn("motel/TelemetryStore.searchTraces")(function* (input: TraceSearch) {
 
 			const cutoff = (yield* Clock.currentTimeMillis) - (input.lookbackMinutes ?? config.otel.traceLookbackMinutes) * 60 * 1000
 			const limit = input.limit ?? config.otel.traceFetchLimit
@@ -680,7 +680,7 @@ export const TelemetryStoreLive = Layer.effect(
 			})
 		})
 
-		const searchLogs = Effect.fn("leto/TelemetryStore.searchLogs")(function* (input: LogSearch) {
+		const searchLogs = Effect.fn("motel/TelemetryStore.searchLogs")(function* (input: LogSearch) {
 			const now = yield* Clock.currentTimeMillis
 			return yield* Effect.sync(() => {
 				const clauses: string[] = []
@@ -729,7 +729,7 @@ export const TelemetryStoreLive = Layer.effect(
 			})
 		})
 
-		const traceStats = Effect.fn("leto/TelemetryStore.traceStats")(function* (input: TraceStatsSearch) {
+		const traceStats = Effect.fn("motel/TelemetryStore.traceStats")(function* (input: TraceStatsSearch) {
 			const traces = yield* searchTraces({
 				serviceName: input.serviceName,
 				operation: input.operation,
@@ -773,7 +773,7 @@ export const TelemetryStoreLive = Layer.effect(
 			return rows.sort((left, right) => right.value - left.value).slice(0, input.limit ?? 20)
 		})
 
-		const logStats = Effect.fn("leto/TelemetryStore.logStats")(function* (input: LogStatsSearch) {
+		const logStats = Effect.fn("motel/TelemetryStore.logStats")(function* (input: LogStatsSearch) {
 			const logs = yield* searchLogs({
 				serviceName: input.serviceName,
 				traceId: input.traceId,
@@ -803,11 +803,11 @@ export const TelemetryStoreLive = Layer.effect(
 				.slice(0, input.limit ?? 20)
 		})
 
-		const listRecentLogs = Effect.fn("leto/TelemetryStore.listRecentLogs")(function* (serviceName: string) {
+		const listRecentLogs = Effect.fn("motel/TelemetryStore.listRecentLogs")(function* (serviceName: string) {
 			return yield* searchLogs({ serviceName, limit: config.otel.logFetchLimit })
 		})
 
-		const listFacets = Effect.fn("leto/TelemetryStore.listFacets")(function* (input: FacetSearch) {
+		const listFacets = Effect.fn("motel/TelemetryStore.listFacets")(function* (input: FacetSearch) {
 
 			const cutoff = (yield* Clock.currentTimeMillis) - (input.lookbackMinutes ?? config.otel.traceLookbackMinutes) * 60 * 1000
 			const limit = input.limit ?? 20
@@ -899,7 +899,7 @@ export const TelemetryStoreLive = Layer.effect(
 			})
 		})
 
-		const listTraceLogs = Effect.fn("leto/TelemetryStore.listTraceLogs")(function* (traceId: string) {
+		const listTraceLogs = Effect.fn("motel/TelemetryStore.listTraceLogs")(function* (traceId: string) {
 			return yield* searchLogs({ traceId, limit: config.otel.logFetchLimit })
 		})
 

@@ -1,10 +1,10 @@
 {
-  "name": "leto",
+  "name": "motel",
   "version": "0.1.0",
   "type": "module",
   "private": true,
   "bin": {
-    "leto-mcp": "src/mcp.ts"
+    "motel-mcp": "src/mcp.ts"
   },
   "scripts": {
     "dev": "bun run src/index.tsx",

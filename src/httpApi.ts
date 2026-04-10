@@ -88,13 +88,13 @@ const Stat = Schema.Struct({
 const ServiceList = Schema.Struct({ data: Schema.Array(Schema.String) })
 const Health = Schema.Struct({
 	ok: Schema.Boolean,
-	service: Schema.String.pipe(Schema.annotateKey({ description: "Stable identity string. Always 'leto-local-server' — used by the MCP shim to detect impostor processes on a stale port." })),
+	service: Schema.String.pipe(Schema.annotateKey({ description: "Stable identity string. Always 'motel-local-server' — used by the MCP shim to detect impostor processes on a stale port." })),
 	databasePath: Schema.String,
-	pid: Schema.Number.pipe(Schema.annotateKey({ description: "Process ID of this leto instance. Used by the MCP shim to verify a registry entry points at the expected process." })),
+	pid: Schema.Number.pipe(Schema.annotateKey({ description: "Process ID of this motel instance. Used by the MCP shim to verify a registry entry points at the expected process." })),
 	url: Schema.String.pipe(Schema.annotateKey({ description: "Base URL this instance is actually bound to, including the dynamically-chosen port." })),
 	workdir: Schema.String.pipe(Schema.annotateKey({ description: "Working directory at the time the server started. Used by MCP discovery to match the current project via longest-prefix." })),
 	startedAt: Schema.String.pipe(Schema.annotateKey({ description: "ISO 8601 timestamp of when the server bound its port." })),
-	version: Schema.String.pipe(Schema.annotateKey({ description: "Leto version string." })),
+	version: Schema.String.pipe(Schema.annotateKey({ description: "Motel version string." })),
 })
 const IngestTraceResponse = Schema.Struct({ insertedSpans: Schema.Number })
 const IngestLogResponse = Schema.Struct({ insertedLogs: Schema.Number })
@@ -123,8 +123,8 @@ const ServiceParam = Schema.optionalKey(Schema.String).pipe(
 	Schema.annotateKey({ description: "Filter by service name" }),
 )
 
-export const LetoHttpApi = HttpApi.make("LetoTelemetry")
-	.annotate(OpenApi.Title, "Leto Telemetry API")
+export const MotelHttpApi = HttpApi.make("MotelTelemetry")
+	.annotate(OpenApi.Title, "Motel Telemetry API")
 	.annotate(OpenApi.Version, "1.0.0")
 	.annotate(OpenApi.Description, "Local OpenTelemetry ingest, query, and debugging API. Accepts OTLP HTTP traces and logs, stores them in SQLite, and exposes query endpoints for TUI, CLI, and agent consumption.")
 	.add(
@@ -361,4 +361,4 @@ export const LetoHttpApi = HttpApi.make("LetoTelemetry")
 			)
 	)
 
-export const letoOpenApiSpec = OpenApi.fromApi(LetoHttpApi)
+export const motelOpenApiSpec = OpenApi.fromApi(MotelHttpApi)

@@ -361,7 +361,7 @@ export const App = () => {
 
 	// Header
 	const autoLabel = autoRefresh ? "\u25cf live" : "\u25cb paused"
-	const headerLeft = `LETO OTEL  service: ${selectedTraceService ?? "none"}`
+	const headerLeft = `MOTEL  service: ${selectedTraceService ?? "none"}`
 	const headerRight = traceState.fetchedAt
 		? `${autoLabel}  ${formatTimestamp(traceState.fetchedAt)}`
 		: traceState.status === "loading"

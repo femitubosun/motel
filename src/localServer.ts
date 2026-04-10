@@ -4,9 +4,9 @@ import { HttpApiBuilder, HttpApiScalar } from "effect/unstable/httpapi"
 import * as HttpRouter from "effect/unstable/http/HttpRouter"
 import * as HttpServer from "effect/unstable/http/HttpServer"
 import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse"
-import { LetoHttpApi } from "./httpApi.js"
+import { MotelHttpApi } from "./httpApi.js"
 import { attributeFiltersFromEntries, ATTRIBUTE_FILTER_PREFIX } from "./queryFilters.js"
-import { LETO_VERSION, writeRegistryEntry } from "./registry.js"
+import { MOTEL_VERSION, writeRegistryEntry } from "./registry.js"
 import { TelemetryStore, TelemetryStoreLive } from "./services/TelemetryStore.js"
 import type { LogItem, TraceItem, TraceSummaryItem } from "./domain.js"
 
@@ -248,23 +248,23 @@ pre { white-space:pre-wrap; margin:0; color:#ede7da; }
 }
 
 const TelemetryGroupLive = HttpApiBuilder.group(
-	LetoHttpApi,
+	MotelHttpApi,
 	"telemetry",
 	(handlers) =>
 		handlers
 			.handleRaw("root", () =>
-				Effect.succeed(textResponse("leto local telemetry server\n\nPOST /v1/traces\nPOST /v1/logs\nGET /api/services\nGET /api/traces\nGET /api/traces/search\nGET /api/traces/stats\nGET /api/traces/<trace-id>\nGET /api/traces/<trace-id>/spans\nGET /api/traces/<trace-id>/logs\nGET /api/spans/search\nGET /api/spans/<span-id>\nGET /api/spans/<span-id>/logs\nGET /api/logs\nGET /api/logs/search\nGET /api/logs/stats\nGET /api/facets?type=logs&field=severity\nGET /openapi.json\nGET /docs\nGET /trace/<trace-id>\n")),
+				Effect.succeed(textResponse("motel local telemetry server\n\nPOST /v1/traces\nPOST /v1/logs\nGET /api/services\nGET /api/traces\nGET /api/traces/search\nGET /api/traces/stats\nGET /api/traces/<trace-id>\nGET /api/traces/<trace-id>/spans\nGET /api/traces/<trace-id>/logs\nGET /api/spans/search\nGET /api/spans/<span-id>\nGET /api/spans/<span-id>/logs\nGET /api/logs\nGET /api/logs/search\nGET /api/logs/stats\nGET /api/facets?type=logs&field=severity\nGET /openapi.json\nGET /docs\nGET /trace/<trace-id>\n")),
 			)
 			.handle("health", () =>
 				Effect.succeed({
 					ok: true,
-					service: "leto-local-server",
+					service: "motel-local-server",
 					databasePath: config.otel.databasePath,
 					pid: process.pid,
 					url: resolveBoundUrl(),
 					workdir: process.cwd(),
 					startedAt: startedAt ?? new Date(0).toISOString(),
-					version: LETO_VERSION,
+					version: MOTEL_VERSION,
 				}),
 			)
 			.handleRaw("ingestTraces", ({ request }) =>
@@ -526,9 +526,9 @@ const TelemetryGroupLive = HttpApiBuilder.group(
 )
 
 const ApiLive = Layer.provideMerge(
-	HttpApiBuilder.layer(LetoHttpApi, { openapiPath: "/openapi.json" }).pipe(
+	HttpApiBuilder.layer(MotelHttpApi, { openapiPath: "/openapi.json" }).pipe(
 		Layer.provide(TelemetryGroupLive),
-		Layer.provide(HttpApiScalar.layer(LetoHttpApi, { scalar: { forceDarkModeState: "dark", showOperationId: true } })),
+		Layer.provide(HttpApiScalar.layer(MotelHttpApi, { scalar: { forceDarkModeState: "dark", showOperationId: true } })),
 		Layer.provide(HttpServer.layerServices),
 	),
 	TelemetryStoreLive,
@@ -552,10 +552,10 @@ export const startLocalServer = async () => {
 			url: resolveBoundUrl(),
 			workdir: process.cwd(),
 			startedAt,
-			version: LETO_VERSION,
+			version: MOTEL_VERSION,
 		})
 	} catch (err) {
-		console.warn(`leto: failed to write registry entry: ${(err as Error).message}`)
+		console.warn(`motel: failed to write registry entry: ${(err as Error).message}`)
 	}
 	return server
 }

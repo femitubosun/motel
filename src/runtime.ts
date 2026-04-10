@@ -25,7 +25,7 @@ const telemetryLayer = NodeSdk.layer(() => ({
 		serviceName: config.otel.serviceName,
 		attributes: {
 			"deployment.environment.name": "local",
-			"service.instance.id": "leto.local",
+			"service.instance.id": "motel.local",
 		},
 	},
 }))

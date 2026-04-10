@@ -23,7 +23,7 @@
 
 ## Verification
 - The built-in verification step is `bun run typecheck`.
-- For runtime verification, start the TUI or server once, then query `http://127.0.0.1:27686/api/services`, `http://127.0.0.1:27686/api/spans/<span-id>`, `http://127.0.0.1:27686/openapi.json`, and `bun run cli logs leto-otel-tui`.
+- For runtime verification, start the TUI or server once, then query `http://127.0.0.1:27686/api/services`, `http://127.0.0.1:27686/api/spans/<span-id>`, `http://127.0.0.1:27686/openapi.json`, and `bun run cli logs motel-otel-tui`.
 - For span-centric debugging, use `http://127.0.0.1:27686/api/spans/search?...`, `http://127.0.0.1:27686/api/spans/<span-id>/logs`, and `http://127.0.0.1:27686/api/traces/<trace-id>/spans`.
 
 ## API Notes
@@ -59,19 +59,19 @@
 - Health: `http://127.0.0.1:27686/api/health`
 
 ## Env Vars
-- `LETO_OTEL_ENABLED`: defaults to `true`
-- `LETO_OTEL_SERVICE_NAME`: defaults to `leto-otel-tui`
-- `LETO_OTEL_BASE_URL`: defaults to `http://127.0.0.1:27686`
-- `LETO_OTEL_HOST`: defaults to `127.0.0.1`
-- `LETO_OTEL_PORT`: defaults to `27686`
-- `LETO_OTEL_EXPORTER_URL`: defaults to `http://127.0.0.1:27686/v1/traces`
-- `LETO_OTEL_LOGS_EXPORTER_URL`: defaults to `http://127.0.0.1:27686/v1/logs`
-- `LETO_OTEL_QUERY_URL`: defaults to `http://127.0.0.1:27686`
-- `LETO_OTEL_DB_PATH`: defaults to `.leto-data/telemetry.sqlite`
-- `LETO_OTEL_TRACE_LOOKBACK_MINUTES`: defaults to `90`
-- `LETO_OTEL_TRACE_LIMIT`: defaults to `40`
-- `LETO_OTEL_LOG_LIMIT`: defaults to `80`
-- `LETO_OTEL_RETENTION_HOURS`: defaults to `12`
+- `MOTEL_OTEL_ENABLED`: defaults to `true`
+- `MOTEL_OTEL_SERVICE_NAME`: defaults to `motel-otel-tui`
+- `MOTEL_OTEL_BASE_URL`: defaults to `http://127.0.0.1:27686`
+- `MOTEL_OTEL_HOST`: defaults to `127.0.0.1`
+- `MOTEL_OTEL_PORT`: defaults to `27686`
+- `MOTEL_OTEL_EXPORTER_URL`: defaults to `http://127.0.0.1:27686/v1/traces`
+- `MOTEL_OTEL_LOGS_EXPORTER_URL`: defaults to `http://127.0.0.1:27686/v1/logs`
+- `MOTEL_OTEL_QUERY_URL`: defaults to `http://127.0.0.1:27686`
+- `MOTEL_OTEL_DB_PATH`: defaults to `.motel-data/telemetry.sqlite`
+- `MOTEL_OTEL_TRACE_LOOKBACK_MINUTES`: defaults to `90`
+- `MOTEL_OTEL_TRACE_LIMIT`: defaults to `40`
+- `MOTEL_OTEL_LOG_LIMIT`: defaults to `80`
+- `MOTEL_OTEL_RETENTION_HOURS`: defaults to `12`
 
 ## TUI Keys
 - `?`: toggle shortcut help

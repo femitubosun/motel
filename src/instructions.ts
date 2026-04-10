@@ -1,11 +1,11 @@
 import { config } from "./config.js"
 
-export const effectSetupInstructions = () => `Set this app up to export local traces and logs to my local leto dev server.
+export const effectSetupInstructions = () => `Set this app up to export local traces and logs to my local motel dev server.
 
 Target endpoints:
 - OTLP HTTP traces: ${config.otel.exporterUrl}
 - OTLP HTTP logs: ${config.otel.logsExporterUrl}
-- leto local API / UI: ${config.otel.queryUrl}
+- motel local API / UI: ${config.otel.queryUrl}
 
 This repo uses Effect beta. Keep the change minimal and idiomatic for the target repo.
 

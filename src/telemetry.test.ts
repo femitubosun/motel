@@ -5,20 +5,20 @@ import { join } from "node:path"
 import { Effect, References } from "effect"
 import { attributeFiltersFromArgs, isAttributeFilterToken } from "./queryFilters.js"
 
-describe("leto telemetry store", () => {
-	const tempDir = mkdtempSync(join(tmpdir(), "leto-test-"))
+describe("motel telemetry store", () => {
+	const tempDir = mkdtempSync(join(tmpdir(), "motel-test-"))
 	const dbPath = join(tempDir, "telemetry.sqlite")
 	let storeRuntime: Awaited<typeof import("./runtime.ts")>["storeRuntime"]
 	let TelemetryStore: Awaited<typeof import("./services/TelemetryStore.ts")>["TelemetryStore"]
-	let letoOpenApiSpec: Awaited<typeof import("./httpApi.ts")>["letoOpenApiSpec"]
+	let motelOpenApiSpec: Awaited<typeof import("./httpApi.ts")>["motelOpenApiSpec"]
 
 	beforeAll(async () => {
-		process.env.LETO_OTEL_DB_PATH = dbPath
-		process.env.LETO_OTEL_RETENTION_HOURS = "24"
+		process.env.MOTEL_OTEL_DB_PATH = dbPath
+		process.env.MOTEL_OTEL_RETENTION_HOURS = "24"
 		const suffix = `?test=${Date.now()}`
 		;({ storeRuntime } = await import(`./runtime.ts${suffix}`))
 		;({ TelemetryStore } = await import(`./services/TelemetryStore.ts${suffix}`))
-		;({ letoOpenApiSpec } = await import(`./httpApi.ts${suffix}`))
+		;({ motelOpenApiSpec } = await import(`./httpApi.ts${suffix}`))
 
 		const nowNanos = BigInt(Date.now()) * 1_000_000n
 		const oneSecond = 1_000_000_000n
@@ -211,7 +211,7 @@ describe("leto telemetry store", () => {
 	})
 
 	it("documents the span lookup route in OpenAPI", () => {
-		expect(letoOpenApiSpec.paths["/api/spans/{spanId}"]).toBeDefined()
+		expect(motelOpenApiSpec.paths["/api/spans/{spanId}"]).toBeDefined()
 	})
 
 	it("aggregates trace stats by operation", async () => {
@@ -250,11 +250,11 @@ describe("leto telemetry store", () => {
 	})
 
 	it("documents the stats routes in OpenAPI", () => {
-		expect(letoOpenApiSpec.paths["/api/traces/stats"]).toBeDefined()
-		expect(letoOpenApiSpec.paths["/api/logs/stats"]).toBeDefined()
-		expect(letoOpenApiSpec.paths["/api/spans/{spanId}/logs"]).toBeDefined()
-		expect(letoOpenApiSpec.paths["/api/spans/search"]).toBeDefined()
-		expect(letoOpenApiSpec.paths["/api/traces/{traceId}/spans"]).toBeDefined()
+		expect(motelOpenApiSpec.paths["/api/traces/stats"]).toBeDefined()
+		expect(motelOpenApiSpec.paths["/api/logs/stats"]).toBeDefined()
+		expect(motelOpenApiSpec.paths["/api/spans/{spanId}/logs"]).toBeDefined()
+		expect(motelOpenApiSpec.paths["/api/spans/search"]).toBeDefined()
+		expect(motelOpenApiSpec.paths["/api/traces/{traceId}/spans"]).toBeDefined()
 	})
 
 	it("parses attr filters consistently for CLI-style args", () => {

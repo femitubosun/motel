@@ -2,7 +2,7 @@
 import { BunRuntime, BunStdio } from "@effect/platform-bun"
 import { Effect, Layer, Logger, Schema } from "effect"
 import { McpServer, Tool, Toolkit } from "effect/unstable/ai"
-import { LetoClient, LetoClientLive } from "./letoClient.js"
+import { MotelClient, MotelClientLive } from "./motelClient.js"
 import { Locator, LocatorLive } from "./locator.js"
 
 const Attributes = Schema.optional(
@@ -41,9 +41,9 @@ const Status = Schema.optional(
 	}),
 )
 
-const StatusTool = Tool.make("leto_status", {
+const StatusTool = Tool.make("motel_status", {
 	description:
-		"Check which leto instance this shim is connected to. Call this FIRST if any other tool errors, to confirm the connection. Returns url, version, workdir, whether the cwd matches, and how many leto instances are running on this machine.",
+		"Check which motel instance this shim is connected to. Call this FIRST if any other tool errors, to confirm the connection. Returns url, version, workdir, whether the cwd matches, and how many motel instances are running on this machine.",
 	parameters: Tool.EmptyParams,
 	success: Schema.Struct({
 		connected: Schema.Boolean,
@@ -57,14 +57,14 @@ const StatusTool = Tool.make("leto_status", {
 	}),
 }).annotate(Tool.Readonly, true)
 
-const ServicesTool = Tool.make("leto_services", {
+const ServicesTool = Tool.make("motel_services", {
 	description:
-		"List every OTel service name that has emitted traces or logs recently. Use this to discover what's being observed before narrowing down with leto_search_traces or leto_search_logs.",
+		"List every OTel service name that has emitted traces or logs recently. Use this to discover what's being observed before narrowing down with motel_search_traces or motel_search_logs.",
 	parameters: Tool.EmptyParams,
 	success: Schema.Unknown,
 }).annotate(Tool.Readonly, true)
 
-const FacetsTool = Tool.make("leto_facets", {
+const FacetsTool = Tool.make("motel_facets", {
 	description:
 		"Return distinct values and counts for a given field, so the agent can see what data exists before filtering. For traces, valid fields include 'service', 'operation', 'status'. For logs, 'service', 'severity', 'scope'. Supports attr.<key> fields too.",
 	parameters: Schema.Struct({
@@ -81,9 +81,9 @@ const FacetsTool = Tool.make("leto_facets", {
 	success: Schema.Unknown,
 }).annotate(Tool.Readonly, true)
 
-const SearchTracesTool = Tool.make("leto_search_traces", {
+const SearchTracesTool = Tool.make("motel_search_traces", {
 	description:
-		"Search distributed traces by service, operation, error status, minimum duration, time window, and arbitrary OTel attributes. Returns compact trace summaries with traceId, duration, error count, span count, and a nextCursor. Drill into a specific trace with leto_get_trace. For 'what just broke' investigations, pass status='error' with a short lookback like '15m'.",
+		"Search distributed traces by service, operation, error status, minimum duration, time window, and arbitrary OTel attributes. Returns compact trace summaries with traceId, duration, error count, span count, and a nextCursor. Drill into a specific trace with motel_get_trace. For 'what just broke' investigations, pass status='error' with a short lookback like '15m'.",
 	parameters: Schema.Struct({
 		service: ServiceParam,
 		operation: Schema.optional(
@@ -101,18 +101,18 @@ const SearchTracesTool = Tool.make("leto_search_traces", {
 	success: Schema.Unknown,
 }).annotate(Tool.Readonly, true)
 
-const GetTraceTool = Tool.make("leto_get_trace", {
+const GetTraceTool = Tool.make("motel_get_trace", {
 	description:
-		"Fetch a single trace by its 32-character hex traceId, including the full span tree ordered parent-first. Use this to drill into a trace found via leto_search_traces. For the logs emitted inside this trace, use leto_get_trace_logs instead.",
+		"Fetch a single trace by its 32-character hex traceId, including the full span tree ordered parent-first. Use this to drill into a trace found via motel_search_traces. For the logs emitted inside this trace, use motel_get_trace_logs instead.",
 	parameters: Schema.Struct({
 		traceId: Schema.String.annotate({ description: "Full 32-character hex trace ID." }),
 	}),
 	success: Schema.Unknown,
 }).annotate(Tool.Readonly, true)
 
-const GetTraceLogsTool = Tool.make("leto_get_trace_logs", {
+const GetTraceLogsTool = Tool.make("motel_get_trace_logs", {
 	description:
-		"Fetch log records correlated with a specific trace, across all spans. When investigating a failing trace, call this before leto_search_logs — it is the most scoped and usually the most informative log view.",
+		"Fetch log records correlated with a specific trace, across all spans. When investigating a failing trace, call this before motel_search_logs — it is the most scoped and usually the most informative log view.",
 	parameters: Schema.Struct({
 		traceId: Schema.String.annotate({ description: "Full 32-character hex trace ID." }),
 		lookback: Lookback,
@@ -122,9 +122,9 @@ const GetTraceLogsTool = Tool.make("leto_get_trace_logs", {
 	success: Schema.Unknown,
 }).annotate(Tool.Readonly, true)
 
-const SearchLogsTool = Tool.make("leto_search_logs", {
+const SearchLogsTool = Tool.make("motel_search_logs", {
 	description:
-		"Search logs by service, trace/span correlation, body substring, time window, and arbitrary OTel attributes. Returns log entries with a nextCursor. For logs tied to a known traceId, prefer leto_get_trace_logs — it is more focused.",
+		"Search logs by service, trace/span correlation, body substring, time window, and arbitrary OTel attributes. Returns log entries with a nextCursor. For logs tied to a known traceId, prefer motel_get_trace_logs — it is more focused.",
 	parameters: Schema.Struct({
 		service: ServiceParam,
 		traceId: Schema.optional(
@@ -144,7 +144,7 @@ const SearchLogsTool = Tool.make("leto_search_logs", {
 	success: Schema.Unknown,
 }).annotate(Tool.Readonly, true)
 
-const TraceStatsTool = Tool.make("leto_traces_stats", {
+const TraceStatsTool = Tool.make("motel_traces_stats", {
 	description:
 		"Aggregate statistics across traces: count, average duration, p95 duration, or error rate, grouped by a field like service, operation, status, or attr.<key>. Use this BEFORE paginating raw traces when you want to understand the shape of the data — for example 'what tools are the slowest' or 'which services are erroring'.",
 	parameters: Schema.Struct({
@@ -163,7 +163,7 @@ const TraceStatsTool = Tool.make("leto_traces_stats", {
 	success: Schema.Unknown,
 }).annotate(Tool.Readonly, true)
 
-const LogStatsTool = Tool.make("leto_logs_stats", {
+const LogStatsTool = Tool.make("motel_logs_stats", {
 	description:
 		"Group and count logs by a field like 'severity', 'service', 'scope', or 'attr.<key>'. Useful for quickly understanding log-level distribution (e.g. how many ERROR logs there are in the last hour) before drilling into individual entries.",
 	parameters: Schema.Struct({
@@ -181,7 +181,7 @@ const LogStatsTool = Tool.make("leto_logs_stats", {
 	success: Schema.Unknown,
 }).annotate(Tool.Readonly, true)
 
-const LetoToolkit = Toolkit.make(
+const MotelToolkit = Toolkit.make(
 	StatusTool,
 	ServicesTool,
 	FacetsTool,
@@ -199,13 +199,13 @@ const asResult = <A>(effect: Effect.Effect<A, { readonly message: string }>) =>
 		onSuccess: (value) => value as unknown,
 	})
 
-const ToolHandlers = LetoToolkit.toLayer(
+const ToolHandlers = MotelToolkit.toLayer(
 	Effect.gen(function* () {
-		const client = yield* LetoClient
+		const client = yield* MotelClient
 		const locator = yield* Locator
 
 		return {
-			leto_status: () =>
+			motel_status: () =>
 				Effect.match(locator.resolve, {
 					onFailure: (err) => ({
 						connected: false as const,
@@ -222,33 +222,33 @@ const ToolHandlers = LetoToolkit.toLayer(
 					}),
 				}),
 
-			leto_services: () => asResult(client.services),
+			motel_services: () => asResult(client.services),
 
-			leto_facets: (input) => asResult(client.facets(input)),
+			motel_facets: (input) => asResult(client.facets(input)),
 
-			leto_search_traces: (input) => asResult(client.searchTraces(input)),
+			motel_search_traces: (input) => asResult(client.searchTraces(input)),
 
-			leto_get_trace: ({ traceId }) => asResult(client.getTrace(traceId)),
+			motel_get_trace: ({ traceId }) => asResult(client.getTrace(traceId)),
 
-			leto_get_trace_logs: ({ traceId, lookback, limit, cursor }) =>
+			motel_get_trace_logs: ({ traceId, lookback, limit, cursor }) =>
 				asResult(client.getTraceLogs(traceId, { lookback, limit, cursor })),
 
-			leto_search_logs: (input) => asResult(client.searchLogs(input)),
+			motel_search_logs: (input) => asResult(client.searchLogs(input)),
 
-			leto_traces_stats: (input) => asResult(client.traceStats(input)),
+			motel_traces_stats: (input) => asResult(client.traceStats(input)),
 
-			leto_logs_stats: (input) => asResult(client.logStats(input)),
+			motel_logs_stats: (input) => asResult(client.logStats(input)),
 		}
 	}),
 )
 
-const ServerLayer = McpServer.toolkit(LetoToolkit).pipe(
+const ServerLayer = McpServer.toolkit(MotelToolkit).pipe(
 	Layer.provideMerge(ToolHandlers),
-	Layer.provide(LetoClientLive),
+	Layer.provide(MotelClientLive),
 	Layer.provide(LocatorLive),
 	Layer.provide(
 		McpServer.layerStdio({
-			name: "leto",
+			name: "motel",
 			version: "0.1.0",
 		}),
 	),

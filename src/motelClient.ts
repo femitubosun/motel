@@ -1,13 +1,13 @@
 import { Effect, Layer, ServiceMap } from "effect"
 import { Locator } from "./locator.js"
 
-export class LetoHttpError extends Error {
-	readonly _tag = "LetoHttpError"
+export class MotelHttpError extends Error {
+	readonly _tag = "MotelHttpError"
 	constructor(
 		readonly status: number,
 		readonly detail: string,
 	) {
-		super(`leto returned HTTP ${status}: ${detail}`)
+		super(`motel returned HTTP ${status}: ${detail}`)
 	}
 }
 
@@ -84,26 +84,26 @@ export type FacetsInput = {
 	readonly limit?: number
 }
 
-export class LetoClient extends ServiceMap.Service<
-	LetoClient,
+export class MotelClient extends ServiceMap.Service<
+	MotelClient,
 	{
-		readonly searchTraces: (input: SearchTracesInput) => Effect.Effect<unknown, LetoHttpError>
-		readonly getTrace: (traceId: string) => Effect.Effect<unknown, LetoHttpError>
+		readonly searchTraces: (input: SearchTracesInput) => Effect.Effect<unknown, MotelHttpError>
+		readonly getTrace: (traceId: string) => Effect.Effect<unknown, MotelHttpError>
 		readonly getTraceLogs: (
 			traceId: string,
 			options: { readonly lookback?: string; readonly limit?: number; readonly cursor?: string },
-		) => Effect.Effect<unknown, LetoHttpError>
-		readonly searchLogs: (input: SearchLogsInput) => Effect.Effect<unknown, LetoHttpError>
-		readonly traceStats: (input: TraceStatsInput) => Effect.Effect<unknown, LetoHttpError>
-		readonly logStats: (input: LogStatsInput) => Effect.Effect<unknown, LetoHttpError>
-		readonly facets: (input: FacetsInput) => Effect.Effect<unknown, LetoHttpError>
-		readonly services: Effect.Effect<unknown, LetoHttpError>
-		readonly health: Effect.Effect<unknown, LetoHttpError>
+		) => Effect.Effect<unknown, MotelHttpError>
+		readonly searchLogs: (input: SearchLogsInput) => Effect.Effect<unknown, MotelHttpError>
+		readonly traceStats: (input: TraceStatsInput) => Effect.Effect<unknown, MotelHttpError>
+		readonly logStats: (input: LogStatsInput) => Effect.Effect<unknown, MotelHttpError>
+		readonly facets: (input: FacetsInput) => Effect.Effect<unknown, MotelHttpError>
+		readonly services: Effect.Effect<unknown, MotelHttpError>
+		readonly health: Effect.Effect<unknown, MotelHttpError>
 	}
->()("leto/LetoClient") {}
+>()("motel/MotelClient") {}
 
-export const LetoClientLive = Layer.effect(
-	LetoClient,
+export const MotelClientLive = Layer.effect(
+	MotelClient,
 	Effect.gen(function* () {
 		const locator = yield* Locator
 
@@ -111,18 +111,18 @@ export const LetoClientLive = Layer.effect(
 			Effect.gen(function* () {
 				const { url } = yield* Effect.mapError(
 					locator.resolve,
-					(err) => new LetoHttpError(0, err.message),
+					(err) => new MotelHttpError(0, err.message),
 				)
 				const target = appendAttributes(appendQuery(new URL(path, url), query), attributes)
 				return yield* Effect.tryPromise({
 					try: async () => {
 						const res = await fetch(target, { signal: AbortSignal.timeout(5000) })
 						const body = (await res.json().catch(() => ({ error: "invalid json" }))) as A
-						if (!res.ok) throw new LetoHttpError(res.status, JSON.stringify(body))
+						if (!res.ok) throw new MotelHttpError(res.status, JSON.stringify(body))
 						return body
 					},
 					catch: (err) =>
-						err instanceof LetoHttpError ? err : new LetoHttpError(0, (err as Error).message),
+						err instanceof MotelHttpError ? err : new MotelHttpError(0, (err as Error).message),
 				}).pipe(
 					Effect.tapError((err) => (err.status === 0 ? locator.invalidate : Effect.void)),
 				)
