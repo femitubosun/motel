@@ -284,6 +284,9 @@ export const MotelHttpApi = HttpApi.make("MotelTelemetry")
 				HttpApiEndpoint.get("searchSpans", "/api/spans/search", {
 					query: {
 						service: ServiceParam,
+						traceId: Schema.optionalKey(Schema.String).pipe(
+							Schema.annotateKey({ description: "Scope search to a single trace" }),
+						),
 						operation: Schema.optionalKey(Schema.String),
 						parentOperation: Schema.optionalKey(Schema.String),
 						status: Schema.optionalKey(Schema.Literals(["ok", "error"])),
@@ -293,7 +296,7 @@ export const MotelHttpApi = HttpApi.make("MotelTelemetry")
 					success: PaginatedSpanList,
 				})
 					.annotate(OpenApi.Summary, "Search spans directly")
-					.annotate(OpenApi.Description, "Search spans directly instead of root traces. Supports service, operation, parentOperation, status, lookback, limit, and attr.<key> filters in the query string. Useful for debugging child spans like Format.file or Tool.write."),
+					.annotate(OpenApi.Description, "Search spans directly instead of root traces. Supports service, traceId, operation, parentOperation, status, lookback, limit, attr.<key>=<value> (exact match), and attrContains.<key>=<substring> (case-insensitive substring search inside attribute values) in the query string."),
 
 				HttpApiEndpoint.get("logs", "/api/logs", {
 					query: {
@@ -317,7 +320,7 @@ export const MotelHttpApi = HttpApi.make("MotelTelemetry")
 					success: LogList,
 				})
 					.annotate(OpenApi.Summary, "Search logs")
-					.annotate(OpenApi.Description, "Search log records by service, severity, trace/span correlation, or body text. Supports attribute filtering via query parameters prefixed with 'attr.' (e.g. ?attr.user.id=123), cursor pagination, and bounded lookback/limit defaults. Ordered by timestamp descending."),
+					.annotate(OpenApi.Description, "Search log records by service, severity, trace/span correlation, or body text (case-insensitive). Supports attr.<key>=<value> (exact match) and attrContains.<key>=<substring> (case-insensitive substring) in the query string. Cursor pagination and bounded lookback/limit defaults. Ordered by timestamp descending."),
 
 				HttpApiEndpoint.get("searchLogs", "/api/logs/search", {
 					query: {

@@ -126,14 +126,28 @@ Use whatever the codebase already provides for tracing and logging. The markers 
 
 ## Query Patterns
 
-Use `attr.<key>=<value>` filters on search endpoints.
+Two filter prefixes for attribute search:
+
+| Prefix | Match type | Example |
+|--------|-----------|---------|
+| `attr.<key>=<value>` | Exact match | `attr.debug.hypothesis=cache-miss` |
+| `attrContains.<key>=<substring>` | Case-insensitive substring | `attrContains.ai.prompt.messages=hello world` |
 
 ```bash
 curl http://127.0.0.1:27686/api/health
 curl http://127.0.0.1:27686/api/services
+
+# Trace search
 curl "http://127.0.0.1:27686/api/traces/search?service=<service>&operation=<text>&attr.debug.session=<session>"
-curl "http://127.0.0.1:27686/api/spans/search?service=<service>&operation=<text>&attr.debug.hypothesis=<id>"
-curl "http://127.0.0.1:27686/api/logs/search?service=<service>&body=<text>&attr.debug.session=<session>"
+
+# Span search (supports traceId to scope to one trace)
+curl "http://127.0.0.1:27686/api/spans/search?service=<service>&traceId=<trace-id>&attr.debug.hypothesis=<id>"
+curl "http://127.0.0.1:27686/api/spans/search?service=<service>&attrContains.ai.prompt.messages=<phrase>"
+
+# Log search (supports severity filter, case-insensitive body search)
+curl "http://127.0.0.1:27686/api/logs/search?service=<service>&severity=ERROR&body=<text>"
+curl "http://127.0.0.1:27686/api/logs/search?service=<service>&attrContains.debug.label=<substring>"
+
 curl http://127.0.0.1:27686/openapi.json
 ```
 

@@ -49,7 +49,9 @@ Debug workflow (hypothesis-driven):
 4. Reproduce the issue.
 5. Query motel for evidence:
    - curl "${config.otel.queryUrl}/api/spans/search?service=<svc>&attr.debug.hypothesis=<id>"
-   - curl "${config.otel.queryUrl}/api/logs/search?service=<svc>&attr.debug.session=<session>"
+   - curl "${config.otel.queryUrl}/api/spans/search?service=<svc>&traceId=<trace-id>&attrContains.ai.prompt=<phrase>"
+   - curl "${config.otel.queryUrl}/api/logs/search?service=<svc>&severity=ERROR&attr.debug.session=<session>"
+   - curl "${config.otel.queryUrl}/api/logs/search?service=<svc>&attrContains.debug.label=<substring>"
 6. Evaluate each hypothesis (CONFIRMED / REJECTED / INCONCLUSIVE) with cited evidence.
 7. Fix only with runtime evidence. Keep instrumentation during verification.
 8. Reproduce again to verify the fix with before/after evidence.
@@ -61,5 +63,7 @@ Rules:
 - Do not remove instrumentation before verification succeeds.
 - Do not log secrets, tokens, passwords, or PII.
 - Revert code from rejected hypotheses — do not let unproven changes accumulate.
-- Use attr.<key>=<value> query params to filter by structured attributes.
+- Use attr.<key>=<value> for exact attribute match, attrContains.<key>=<substring> for case-insensitive substring search inside attribute values.
+- /api/logs supports severity=ERROR|WARN|INFO|DEBUG|TRACE and case-insensitive body search.
+- /api/spans/search supports traceId to scope to one trace.
 - List and search responses include meta.nextCursor when more data is available.`

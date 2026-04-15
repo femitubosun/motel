@@ -7,7 +7,7 @@ import * as HttpRouter from "effect/unstable/http/HttpRouter"
 import * as HttpServer from "effect/unstable/http/HttpServer"
 import * as HttpServerResponse from "effect/unstable/http/HttpServerResponse"
 import { MotelHttpApi } from "./httpApi.js"
-import { attributeFiltersFromEntries, ATTRIBUTE_FILTER_PREFIX } from "./queryFilters.js"
+import { attributeFiltersFromEntries, attributeContainsFiltersFromEntries, ATTRIBUTE_FILTER_PREFIX, ATTRIBUTE_CONTAINS_PREFIX } from "./queryFilters.js"
 import { MOTEL_SERVICE_ID, MOTEL_VERSION, writeRegistryEntry } from "./registry.js"
 import { TelemetryStore, TelemetryStoreLive } from "./services/TelemetryStore.js"
 import type { LogItem, TraceItem, TraceSummaryItem } from "./domain.js"
@@ -70,7 +70,12 @@ const parseBoundedLookbackMinutes = (value: string | null, fallback: number, max
 
 const attributeFiltersFromQuery = (url: URL) =>
 	attributeFiltersFromEntries(
-		[...url.searchParams.entries()].filter(([key]) => key.startsWith(ATTRIBUTE_FILTER_PREFIX)),
+		[...url.searchParams.entries()].filter(([key]) => key.startsWith(ATTRIBUTE_FILTER_PREFIX) && !key.startsWith(ATTRIBUTE_CONTAINS_PREFIX)),
+	)
+
+const attributeContainsFiltersFromQuery = (url: URL) =>
+	attributeContainsFiltersFromEntries(
+		[...url.searchParams.entries()].filter(([key]) => key.startsWith(ATTRIBUTE_CONTAINS_PREFIX)),
 	)
 
 type CursorShape =
@@ -162,6 +167,7 @@ const loadLogsPage = (input: {
 	readonly spanId?: string | null
 	readonly body?: string | null
 	readonly attributeFilters?: Readonly<Record<string, string>>
+	readonly attributeContainsFilters?: Readonly<Record<string, string>>
 	readonly limit: number
 	readonly lookbackMinutes: number
 	readonly cursor: CursorShape | null
@@ -177,6 +183,7 @@ const loadLogsPage = (input: {
 				lookbackMinutes: input.lookbackMinutes,
 				limit: input.limit + 1,
 				attributeFilters: input.attributeFilters,
+				attributeContainsFilters: input.attributeContainsFilters,
 			}),
 			(logs) => paginateLogs(logs, {
 				limit: input.limit,
@@ -190,6 +197,7 @@ const handleLogSearch = (request: { readonly url: string }) =>
 	respondRaw(Effect.gen(function*() {
 		const url = requestUrl(request)
 		const attributeFilters = attributeFiltersFromQuery(url)
+		const attributeContainsFilters = attributeContainsFiltersFromQuery(url)
 		const limit = parseBoundedLimit(url.searchParams.get("limit"), LOG_DEFAULT_LIMIT, LOG_MAX_LIMIT)
 		const lookbackMinutes = parseBoundedLookbackMinutes(url.searchParams.get("lookback"), LOG_DEFAULT_LOOKBACK, LOG_MAX_LOOKBACK)
 		const cursor = decodeCursor(url.searchParams.get("cursor"))
@@ -200,6 +208,7 @@ const handleLogSearch = (request: { readonly url: string }) =>
 			spanId: url.searchParams.get("spanId"),
 			body: url.searchParams.get("body"),
 			attributeFilters,
+			attributeContainsFilters,
 			limit,
 			lookbackMinutes,
 			cursor,
@@ -376,15 +385,18 @@ const TelemetryGroupLive = HttpApiBuilder.group(
 				respondRaw(Effect.gen(function*() {
 					const url = requestUrl(request)
 					const attributeFilters = attributeFiltersFromQuery(url)
+					const attributeContainsFilters = attributeContainsFiltersFromQuery(url)
 					const limit = parseBoundedLimit(url.searchParams.get("limit"), SPAN_DEFAULT_LIMIT, SPAN_MAX_LIMIT)
 					const lookbackMinutes = parseBoundedLookbackMinutes(url.searchParams.get("lookback"), TRACE_DEFAULT_LOOKBACK, TRACE_MAX_LOOKBACK)
 					const data = yield* withStore((store) =>
 						store.searchSpans({
 							serviceName: url.searchParams.get("service"),
+							traceId: url.searchParams.get("traceId"),
 							operation: url.searchParams.get("operation"),
 							parentOperation: url.searchParams.get("parentOperation"),
 							status: (url.searchParams.get("status") as "ok" | "error" | null) ?? null,
 							attributeFilters,
+							attributeContainsFilters,
 							limit: limit + 1,
 							lookbackMinutes,
 						}),

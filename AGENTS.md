@@ -29,6 +29,9 @@
 ## API Notes
 - List and search endpoints return a `meta` object with `limit`, `lookback`, `returned`, `truncated`, and `nextCursor`.
 - `/api/traces` and `/api/traces/search` return summaries by default. Use `/api/traces/<trace-id>` for the full trace tree.
+- `/api/logs` and `/api/logs/search` support `severity` (e.g. `?severity=ERROR`), case-insensitive body search, and `attrContains.<key>=<substring>` for substring search inside attribute values.
+- `/api/spans/search` supports `traceId` to scope to one trace, `attr.<key>=<value>` for exact match, and `attrContains.<key>=<substring>` for case-insensitive substring search inside attribute values.
+- `/api/docs` lists available documentation; `/api/docs/debug` and `/api/docs/effect` return the full skill content.
 
 ## Architecture
 - `src/index.tsx` creates the OpenTUI renderer and mounts the app.

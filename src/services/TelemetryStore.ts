@@ -45,6 +45,7 @@ interface LogSearch {
 	readonly lookbackMinutes?: number
 	readonly limit?: number
 	readonly attributeFilters?: Readonly<Record<string, string>>
+	readonly attributeContainsFilters?: Readonly<Record<string, string>>
 }
 
 interface TraceSearch {
@@ -59,12 +60,14 @@ interface TraceSearch {
 
 interface SpanSearch {
 	readonly serviceName?: string | null
+	readonly traceId?: string | null
 	readonly operation?: string | null
 	readonly parentOperation?: string | null
 	readonly status?: "ok" | "error" | null
 	readonly lookbackMinutes?: number
 	readonly limit?: number
 	readonly attributeFilters?: Readonly<Record<string, string>>
+	readonly attributeContainsFilters?: Readonly<Record<string, string>>
 }
 
 interface TraceStatsSearch extends TraceSearch {
@@ -255,6 +258,12 @@ const buildSpanItem = (traceId: string, spanRows: readonly SpanRow[], spanId: st
 
 const matchesAttributes = (attributes: Readonly<Record<string, string>>, filters: Readonly<Record<string, string>> | undefined) =>
 	!filters || Object.entries(filters).every(([key, value]) => attributes[key] === value)
+
+const matchesAttributeContains = (attributes: Readonly<Record<string, string>>, filters: Readonly<Record<string, string>> | undefined) =>
+	!filters || Object.entries(filters).every(([key, needle]) => {
+		const value = attributes[key]
+		return value !== undefined && value.toLowerCase().includes(needle.toLowerCase())
+	})
 
 const percentile = (values: readonly number[], ratio: number) => {
 	if (values.length === 0) return 0
@@ -756,12 +765,18 @@ export const TelemetryStoreLive = Layer.effect(
 		const searchSpans = Effect.fn("motel/TelemetryStore.searchSpans")(function* (input: SpanSearch) {
 			const cutoff = (yield* Clock.currentTimeMillis) - (input.lookbackMinutes ?? config.otel.traceLookbackMinutes) * 60 * 1000
 			const limit = input.limit ?? 100
-			const candidateLimit = Object.keys(input.attributeFilters ?? {}).length > 0 ? Math.max(limit * 20, 500) : Math.max(limit * 10, 200)
+			const hasPostFilters = Object.keys(input.attributeFilters ?? {}).length > 0
+				|| Object.keys(input.attributeContainsFilters ?? {}).length > 0
+			const candidateLimit = hasPostFilters ? Math.max(limit * 20, 500) : Math.max(limit * 10, 200)
 
 			return yield* Effect.sync(() => {
 				const clauses: string[] = ["start_time_ms >= ?"]
 				const params: Array<string | number> = [cutoff]
 
+				if (input.traceId) {
+					clauses.push("trace_id = ?")
+					params.push(input.traceId)
+				}
 				if (input.serviceName) {
 					clauses.push("service_name = ?")
 					params.push(input.serviceName)
@@ -773,6 +788,11 @@ export const TelemetryStoreLive = Layer.effect(
 				if (input.status) {
 					clauses.push("status = ?")
 					params.push(input.status)
+				}
+				// Pre-filter attrContains in SQL against the raw JSON column
+				for (const [, needle] of Object.entries(input.attributeContainsFilters ?? {})) {
+					clauses.push("(attributes_json LIKE ? COLLATE NOCASE OR resource_json LIKE ? COLLATE NOCASE)")
+					params.push(`%${needle}%`, `%${needle}%`)
 				}
 
 				const rows = db.query(`
@@ -818,6 +838,7 @@ export const TelemetryStoreLive = Layer.effect(
 							if (!item.parentOperationName?.toLowerCase().includes(needle)) return false
 						}
 						if (input.attributeFilters && !matchesAttributes(item.span.tags, input.attributeFilters)) return false
+						if (input.attributeContainsFilters && !matchesAttributeContains(item.span.tags, input.attributeContainsFilters)) return false
 						return true
 					})
 					.slice(0, limit)
@@ -916,10 +937,17 @@ export const TelemetryStoreLive = Layer.effect(
 					clauses.push(`timestamp_ms >= ?`)
 					params.push(cutoff)
 				}
+				// Pre-filter attrContains in SQL against the raw JSON column
+				for (const [, needle] of Object.entries(input.attributeContainsFilters ?? {})) {
+					clauses.push("(attributes_json LIKE ? COLLATE NOCASE OR resource_json LIKE ? COLLATE NOCASE)")
+					params.push(`%${needle}%`, `%${needle}%`)
+				}
 
 				const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : ""
 				const limit = input.limit ?? config.otel.logFetchLimit
-				const queryLimit = Object.keys(input.attributeFilters ?? {}).length > 0 ? Math.max(limit * 10, 500) : limit
+				const hasPostFilters = Object.keys(input.attributeFilters ?? {}).length > 0
+					|| Object.keys(input.attributeContainsFilters ?? {}).length > 0
+				const queryLimit = hasPostFilters ? Math.max(limit * 10, 500) : limit
 				const rows = db.query(`
 					SELECT * FROM logs
 					${where}
@@ -928,11 +956,11 @@ export const TelemetryStoreLive = Layer.effect(
 				`).all(...params, queryLimit) as LogRow[]
 
 				const logs = rows.map(parseLogRow)
-				const filtered = Object.entries(input.attributeFilters ?? {}).length === 0
-					? logs
-					: logs.filter((log) =>
-						Object.entries(input.attributeFilters ?? {}).every(([key, value]) => log.attributes[key] === value),
-					)
+				const filtered = logs.filter((log) => {
+					if (!matchesAttributes(log.attributes, input.attributeFilters)) return false
+					if (!matchesAttributeContains(log.attributes, input.attributeContainsFilters)) return false
+					return true
+				})
 
 				return filtered.slice(0, limit)
 			})

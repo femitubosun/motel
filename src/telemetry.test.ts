@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect, References } from "effect"
-import { attributeFiltersFromArgs, isAttributeFilterToken } from "./queryFilters.js"
+import { attributeFiltersFromArgs, attributeContainsFiltersFromArgs, isAttributeFilterToken, isAttributeContainsToken } from "./queryFilters.js"
 
 describe("motel telemetry store", () => {
 	const tempDir = mkdtempSync(join(tmpdir(), "motel-test-"))
@@ -362,6 +362,59 @@ describe("motel telemetry store", () => {
 		expect(result[0]?.body).toBe("stream failed")
 	})
 
+	it("searches spans by traceId", async () => {
+		const result = await storeRuntime.runPromise(
+			Effect.flatMap(TelemetryStore.asEffect(), (store) =>
+				store.searchSpans({ traceId: "trace-1" }),
+			).pipe(Effect.provideService(References.MinimumLogLevel, "None")),
+		)
+
+		expect(result).toHaveLength(2)
+		expect(result.every((s) => s.traceId === "trace-1")).toBe(true)
+	})
+
+	it("searches spans with attrContains substring filter", async () => {
+		const result = await storeRuntime.runPromise(
+			Effect.flatMap(TelemetryStore.asEffect(), (store) =>
+				store.searchSpans({
+					serviceName: "test-api",
+					attributeContainsFilters: { sessionID: "session" },
+				}),
+			).pipe(Effect.provideService(References.MinimumLogLevel, "None")),
+		)
+
+		// Both root spans have sessionID containing "session"
+		expect(result.length).toBeGreaterThanOrEqual(2)
+	})
+
+	it("searches spans with attrContains case-insensitively", async () => {
+		const result = await storeRuntime.runPromise(
+			Effect.flatMap(TelemetryStore.asEffect(), (store) =>
+				store.searchSpans({
+					serviceName: "test-api",
+					attributeContainsFilters: { modelID: "GPT" },
+				}),
+			).pipe(Effect.provideService(References.MinimumLogLevel, "None")),
+		)
+
+		// modelID is "gpt-5.4", searching "GPT" should match case-insensitively
+		expect(result.length).toBeGreaterThanOrEqual(2)
+	})
+
+	it("searches logs with attrContains substring filter", async () => {
+		const result = await storeRuntime.runPromise(
+			Effect.flatMap(TelemetryStore.asEffect(), (store) =>
+				store.searchLogs({
+					serviceName: "test-api",
+					attributeContainsFilters: { tool: "sea" },
+				}),
+			).pipe(Effect.provideService(References.MinimumLogLevel, "None")),
+		)
+
+		expect(result).toHaveLength(1)
+		expect(result[0]?.body).toBe("tool call started")
+	})
+
 	it("combines severity and body filters", async () => {
 		const result = await storeRuntime.runPromise(
 			Effect.flatMap(TelemetryStore.asEffect(), (store) =>
@@ -452,5 +505,19 @@ describe("motel telemetry store", () => {
 			sessionID: "sess_123",
 			tool: "search",
 		})
+	})
+
+	it("parses attrContains filters for CLI-style args", () => {
+		expect(isAttributeContainsToken("attrContains.ai.prompt=hello world")).toBe(true)
+		expect(isAttributeContainsToken("attr.key=exact")).toBe(false)
+		expect(attributeContainsFiltersFromArgs(["attrContains.ai.prompt=hello", "attr.exact=match"])).toEqual({
+			"ai.prompt": "hello",
+		})
+	})
+
+	it("attr filters exclude attrContains tokens", () => {
+		const mixed = ["attr.key=exact", "attrContains.key=substring"]
+		expect(attributeFiltersFromArgs(mixed)).toEqual({ key: "exact" })
+		expect(attributeContainsFiltersFromArgs(mixed)).toEqual({ key: "substring" })
 	})
 })
