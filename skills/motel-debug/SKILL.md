@@ -23,9 +23,34 @@ If the user provides a different motel URL, use that instead of the default.
 
 ## Workflow
 
-### 1. Verify motel is running
+### 1. Verify motel is running — and start it if not
 
-Check `GET /api/health`. If motel is not reachable, stop and tell the user.
+Check `GET /api/health`. If it returns 200, continue.
+
+If it fails (connection refused, timeout, non-200), motel isn't running.
+Start it as a background daemon — **do not** launch the TUI, which is
+interactive and will block your shell:
+
+```bash
+motel start
+```
+
+`motel start` ensures a managed daemon process is running, writes a
+lockfile under `.motel-data/`, and returns a JSON status blob. It's
+idempotent — safe to call repeatedly. If motel isn't on `PATH`, fall
+back to `bunx @kitlangton/motel start`.
+
+After starting, re-check `GET /api/health` (may take 1–2s to become
+ready). If it still fails, read `.motel-data/daemon.log` for the error
+and surface it to the user.
+
+Other lifecycle commands, for reference:
+
+```bash
+motel status   # JSON status (running? pid? workdir?)
+motel stop     # stop the managed daemon for this workdir
+```
+
 Discover reporting services with `GET /api/services` when needed.
 
 ### 2. Generate hypotheses

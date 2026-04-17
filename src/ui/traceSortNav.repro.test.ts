@@ -60,8 +60,9 @@ const listRows = (snap: string): { readonly rows: readonly string[]; readonly se
 		const leftHalf = raw.split("\u2502")[0] ?? raw
 		const rightHalf = raw.includes("\u2502") ? raw.split("\u2502").slice(1).join("\u2502") : ""
 
-		// Trace rows: left pane, `·` then `op #hash`.
-		const rowMatch = leftHalf.match(/^\s+\u00b7\s+(\S+)\s+#/)
+		// Trace rows: left pane, `·` then the operation name as the first
+		// token. (Earlier versions appended `#<hash>`; that's been removed.)
+		const rowMatch = leftHalf.match(/^\s+\u00b7\s+(op[A-Z])\b/)
 		if (rowMatch) rows.push(rowMatch[1]!)
 
 		// Selected trace: right pane, line immediately after `TRACE DETAILS`
