@@ -8,6 +8,26 @@ traces, spans, and logs from a terminal or the built-in web UI.
 
 - [Bun](https://bun.sh/) — v1.1 or newer
 
+## Install the motel-debug skill
+
+`motel` ships a companion skill that teaches agents (Claude Code, OpenCode,
+Cursor, Codex, and 40+ others) how to debug with runtime evidence by
+querying motel's local OTLP store. Install it with a one-liner via
+[`npx skills`](https://github.com/vercel-labs/skills):
+
+```bash
+# Project-local (adds to .claude/skills, .agents/skills, etc.)
+npx skills add kitlangton/motel --skill motel-debug
+
+# Globally, available in every project
+npx skills add kitlangton/motel --skill motel-debug -g
+
+# Target a specific agent only
+npx skills add kitlangton/motel --skill motel-debug -a claude-code
+```
+
+The skill lives at [`skills/motel-debug/`](skills/motel-debug/) in this repo.
+
 ## Quick start
 
 ```bash
