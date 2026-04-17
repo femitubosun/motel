@@ -40,7 +40,27 @@
 
 ## Architecture
 - `src/index.tsx` creates the OpenTUI renderer and mounts the app.
-- `src/App.tsx` contains the main UI, keyboard bindings, trace view, and correlated log view.
+- `src/App.tsx` composes the top-level screen: header, footer, and the
+  drill-in workspace. Heavy logic is delegated to the modules below.
+- `src/ui/app/useTraceScreenData.ts` owns the atoms and data-loading
+  effects for traces, logs, services, and cache warming.
+- `src/ui/app/useAppLayout.ts` is the single source for layout math
+  (pane widths, body lines, viewport rows, drill-in level).
+- `src/ui/app/TraceWorkspace.tsx` renders the drill-in state machine:
+  L0 (trace list), L1 (waterfall), L2 (span detail), plus the service
+  logs side mode.
+- `src/ui/app/TraceListPane.tsx` wraps `TraceList` in a scrollbox with
+  the filter bar and list header.
+- `src/ui/TraceList.tsx` renders trace rows (trace id, duration, span
+  count, relative age).
+- `src/ui/Waterfall.tsx` renders the waterfall timeline with a
+  virtualised scroll viewport; `src/ui/waterfallNav.ts` is the pure
+  collapse/expand/walk resolver (unit-tested).
+- `src/ui/TraceDetailsPane.tsx` is the L1 body: header + waterfall.
+- `src/ui/SpanDetailPane.tsx` is the L2 body; renders
+  `src/ui/SpanDetail.tsx` below a header that owns the span identity.
+- `src/ui/useKeyboardNav.ts` centralises the keyboard handlers and
+  cross-pane navigation state transitions.
 - `src/cli.ts` exposes trace and log queries through a small local CLI wrapper.
 - `src/runtime.ts` wires the Effect beta runtime and OTEL trace + log exporters.
 - `src/localServer.ts` starts the local Bun OTLP/query server.
@@ -56,6 +76,17 @@
 - `web/src/pages/` contains route pages: TracesPage, TraceDetailPage, LogsPage, AiCallsPage.
 - `web/src/components/` contains Waterfall and SpanDetail components.
 - The server in `src/localServer.ts` serves `web/dist/` as static files with SPA fallback for non-API routes.
+
+## Tests
+- `bun test` runs the suite. Three kinds of tests live in the repo:
+  - `src/telemetry.test.ts` exercises the SQLite TelemetryStore with
+    OTLP payloads end-to-end.
+  - `src/ui/waterfallNav.test.ts` unit-tests the pure collapse/expand
+    resolver (no UI).
+  - `src/ui/*.repro.test.ts` drive the real TUI under `tuistory` to
+    reproduce regressions; each has a sibling `*.repro.seed.ts` that
+    seeds a deterministic trace into SQLite in a child process. These
+    are auto-skipped when `tuistory` isn't installed.
 
 ## Effect Observability Guidance
 - Inspect the target repo’s existing Effect runtime and observability wiring before adding anything new.
@@ -81,24 +112,31 @@
 - `MOTEL_OTEL_LOGS_EXPORTER_URL`: defaults to `http://127.0.0.1:27686/v1/logs`
 - `MOTEL_OTEL_QUERY_URL`: defaults to `http://127.0.0.1:27686`
 - `MOTEL_OTEL_DB_PATH`: defaults to `.motel-data/telemetry.sqlite`
-- `MOTEL_OTEL_TRACE_LOOKBACK_MINUTES`: defaults to `90`
-- `MOTEL_OTEL_TRACE_LIMIT`: defaults to `40`
+- `MOTEL_OTEL_TRACE_LOOKBACK_MINUTES`: defaults to `1440` (24h)
+- `MOTEL_OTEL_TRACE_LIMIT`: defaults to `100`
 - `MOTEL_OTEL_LOG_LIMIT`: defaults to `80`
-- `MOTEL_OTEL_RETENTION_HOURS`: defaults to `12`
+- `MOTEL_OTEL_RETENTION_HOURS`: defaults to `168` (7d)
+- `MOTEL_OTEL_MAX_DB_SIZE_MB`: defaults to `256` (size-based retention cap)
 
 ## TUI Keys
 - `?`: toggle shortcut help
 - `j` / `k` or `up` / `down`: move trace or span selection
+- `h` / `left`: collapse current span, or step to parent
+- `l` / `right`: expand current span, or step to first child
 - `ctrl-n` / `ctrl-p`: switch traces while staying in the details area
 - `gg` / `home`: jump to the first trace or span
 - `G` / `end`: jump to the last trace or span
 - `ctrl-u` / `pageup`: page up
 - `ctrl-d` / `pagedown`: page down
-- `l`: toggle service logs
+- `enter`: drill in one level (list → waterfall → span detail)
+- `esc`: back out one level
+- `tab`: toggle service logs view
 - `[` / `]`: switch services
-- `enter`: enter spans or open span detail
-- `esc`: back out of span detail or span selection
-- `r`: refresh traces
+- `s`: cycle sort mode (recent → slowest → errors)
+- `/`: enter filter mode (type to match on root operation name; `:error` restricts to failing traces)
+- `a`: pause or resume auto-refresh
+- `r`: refresh now
 - `c`: copy setup instructions for another Effect app
 - `o`: open selected trace in the browser
+- `y`: copy selected trace or span id
 - `q`: quit

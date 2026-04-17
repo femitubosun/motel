@@ -4,4 +4,3 @@ node_modules/
 .otel-data/
 .motel-data/
 web/dist/
-CLAUDE.md
