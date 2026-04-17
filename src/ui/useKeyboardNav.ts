@@ -22,7 +22,8 @@ import {
 	traceStateAtom,
 } from "./state.ts"
 import { G_PREFIX_TIMEOUT_MS } from "./theme.ts"
-import { findFirstChildIndex, findParentIndex, getVisibleSpans } from "./Waterfall.tsx"
+import { getVisibleSpans } from "./Waterfall.tsx"
+import { resolveCollapseStep } from "./waterfallNav.ts"
 
 interface KeyboardNavParams {
 	selectedTrace: TraceItem | null
@@ -285,6 +286,13 @@ export const useKeyboardNav = (params: KeyboardNavParams) => {
 			return
 		}
 
+		if (s.showHelp) {
+			if (key.name === "return" || key.name === "enter" || key.name === "escape") {
+				setShowHelp(false)
+			}
+			return
+		}
+
 		if (plainG && !key.repeated) {
 			if (pendingGRef.current) {
 				clearPendingG()
@@ -443,22 +451,16 @@ export const useKeyboardNav = (params: KeyboardNavParams) => {
 			if (s.spanNavActive && s.selectedTrace) {
 				const trace = s.selectedTrace
 				setCollapsedSpanIds((currentCollapsed) => {
-					const visible = getVisibleSpans(trace.spans, currentCollapsed)
-					const idx = s.selectedSpanIndex
-					if (idx === null || idx < 0 || idx >= visible.length) return currentCollapsed
-					const span = visible[idx]!
-					const fullIndex = trace.spans.indexOf(span)
-					const hasKids = fullIndex >= 0 && findFirstChildIndex(trace.spans, fullIndex) !== null
-					// If the span has kids and is expanded, collapse it (selection stays on span).
-					if (hasKids && !currentCollapsed.has(span.spanId)) {
-						const next = new Set(currentCollapsed)
-						next.add(span.spanId)
-						return next
+					const result = resolveCollapseStep({
+						spans: trace.spans,
+						collapsed: currentCollapsed,
+						selectedIndex: s.selectedSpanIndex,
+						direction: "left",
+					})
+					if (result.selectedIndex !== s.selectedSpanIndex) {
+						setSelectedSpanIndex(result.selectedIndex)
 					}
-					// Otherwise walk to parent in the current visible list.
-					const parentIdx = findParentIndex(visible, idx)
-					if (parentIdx !== null) setSelectedSpanIndex(parentIdx)
-					return currentCollapsed
+					return result.collapsed
 				})
 			}
 			return
@@ -467,22 +469,16 @@ export const useKeyboardNav = (params: KeyboardNavParams) => {
 			if (s.spanNavActive && s.selectedTrace) {
 				const trace = s.selectedTrace
 				setCollapsedSpanIds((currentCollapsed) => {
-					const visible = getVisibleSpans(trace.spans, currentCollapsed)
-					const idx = s.selectedSpanIndex
-					if (idx === null || idx < 0 || idx >= visible.length) return currentCollapsed
-					const span = visible[idx]!
-					const fullIndex = trace.spans.indexOf(span)
-					const hasKids = fullIndex >= 0 && findFirstChildIndex(trace.spans, fullIndex) !== null
-					// If the span has kids and is collapsed, expand it (selection stays on span).
-					if (hasKids && currentCollapsed.has(span.spanId)) {
-						const next = new Set(currentCollapsed)
-						next.delete(span.spanId)
-						return next
+					const result = resolveCollapseStep({
+						spans: trace.spans,
+						collapsed: currentCollapsed,
+						selectedIndex: s.selectedSpanIndex,
+						direction: "right",
+					})
+					if (result.selectedIndex !== s.selectedSpanIndex) {
+						setSelectedSpanIndex(result.selectedIndex)
 					}
-					// Otherwise walk into first child in the current visible list.
-					const childIdx = findFirstChildIndex(visible, idx)
-					if (childIdx !== null) setSelectedSpanIndex(childIdx)
-					return currentCollapsed
+					return result.collapsed
 				})
 			} else if (!s.spanNavActive && !s.serviceLogNavActive) {
 				toggleServiceLogsView()

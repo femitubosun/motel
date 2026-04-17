@@ -5,7 +5,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react"
 import { config } from "./config.js"
 import type { LogItem, TraceItem } from "./domain.ts"
 import { fitCell, formatShortDate, formatTimestamp, traceRowId } from "./ui/format.ts"
-import { AlignedHeaderLine, BlankRow, Divider, FilterBar, FooterHints, PlainLine, SeparatorColumn, SplitDivider, TextLine } from "./ui/primitives.tsx"
+import { AlignedHeaderLine, BlankRow, Divider, FilterBar, FooterHints, HelpModal, PlainLine, SeparatorColumn, SplitDivider, TextLine } from "./ui/primitives.tsx"
 import { ServiceLogsView } from "./ui/ServiceLogs.tsx"
 import {
 	autoRefreshAtom,
@@ -68,7 +68,7 @@ export const App = () => {
 	const sectionPadding = 1
 	const traceListHeaderHeight = 1
 	const footerNotice = notice ? fitCell(notice, Math.max(24, Math.max(60, width ?? 100) - 2)) : null
-	const footerHeight = footerNotice ? 1 : 2
+	const footerHeight = 1
 	const footerFrameHeight = footerHeight > 0 ? 1 + footerHeight : 0
 	const frameHeight = 1 + 1 + footerFrameHeight
 	const availableContentHeight = Math.max(10, (height ?? 24) - frameHeight)
@@ -537,7 +537,10 @@ export const App = () => {
 
 	// When in span nav mode on wide layout, expand trace detail to full width
 	const expandedTraceView = isWideLayout && spanNavActive
-	const fullBodyLines = Math.max(8, availableContentHeight - 5)
+	// In expanded trace view, TraceDetailsPane renders its own bottom divider that
+	// connects into the footer, so the body gets one extra usable row versus the
+	// normal app-level footer divider layout.
+	const fullBodyLines = Math.max(8, availableContentHeight - 4)
 	const fullContentWidth = Math.max(24, contentWidth - sectionPadding * 2)
 
 	// Show split layout with vertical separator (not in expanded or narrow mode)
@@ -552,7 +555,8 @@ export const App = () => {
 			<box paddingLeft={1} paddingRight={1} flexDirection="column">
 			<TextLine>
 				<span fg={colors.muted} attributes={TextAttributes.BOLD}>MOTEL</span>
-				<span fg={colors.muted}>{`  ${headerServiceLabel}`}</span>
+				<span fg={colors.separator}>{" · "}</span>
+				<span fg={colors.muted}>{headerServiceLabel}</span>
 				<span fg={colors.muted}>{" ".repeat(headerGap)}</span>
 				<span fg={colors.muted} attributes={TextAttributes.BOLD}>{headerRight}</span>
 			</TextLine>
@@ -585,7 +589,7 @@ export const App = () => {
 				</box>
 			) : expandedTraceView ? (
 				<box flexGrow={1} flexDirection="column">
-					<TraceDetailsPane trace={selectedTrace} traceSummary={selectedTraceSummary} traceStatus={traceDetailState.status} traceError={traceDetailState.error} traceLogsState={logState} contentWidth={fullContentWidth} bodyLines={fullBodyLines} paneWidth={contentWidth} selectedSpanIndex={selectedSpanIndex} collapsedSpanIds={collapsedSpanIds} detailView={detailView} focused={spanNavActive} onSelectSpan={selectSpan} />
+					<TraceDetailsPane trace={selectedTrace} traceSummary={selectedTraceSummary} traceStatus={traceDetailState.status} traceError={traceDetailState.error} traceLogsState={logState} contentWidth={fullContentWidth} bodyLines={fullBodyLines} paneWidth={contentWidth} selectedSpanIndex={selectedSpanIndex} collapsedSpanIds={collapsedSpanIds} detailView={detailView} focused={spanNavActive} onSelectSpan={selectSpan} showBottomDivider={footerHeight > 0} />
 				</box>
 			) : isWideLayout ? (
 				<box flexGrow={1} flexDirection="row">
@@ -616,7 +620,9 @@ export const App = () => {
 			)}
 			{footerHeight > 0 ? (
 				<>
-					{showSplit
+					{expandedTraceView
+					? null
+					: showSplit
 					? <SplitDivider leftWidth={leftPaneWidth} junction={"\u2534"} rightWidth={rightPaneWidth} />
 					: <Divider width={contentWidth} />}
 					<box paddingLeft={1} paddingRight={1} flexDirection="column" height={footerHeight}>
@@ -628,6 +634,7 @@ export const App = () => {
 					</box>
 				</>
 			) : null}
+			{showHelp ? <HelpModal width={width ?? 100} height={height ?? 24} autoRefresh={autoRefresh} onClose={() => setShowHelp(false)} /> : null}
 		</box>
 	)
 }

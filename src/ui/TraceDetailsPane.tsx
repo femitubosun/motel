@@ -1,7 +1,7 @@
 import { useMemo } from "react"
 import type { TraceItem, TraceSummaryItem } from "../domain.ts"
 import { formatDuration, formatShortDate, formatTimestamp, lifecycleLabel } from "./format.ts"
-import { AlignedHeaderLine, Divider, PlainLine, SeparatorColumn, TextLine } from "./primitives.tsx"
+import { AlignedHeaderLine, Divider, PlainLine, SeparatorColumn, SplitDivider, TextLine } from "./primitives.tsx"
 import { SpanDetailView } from "./SpanDetail.tsx"
 import { SpanDetailFullView } from "./SpanDetailFull.tsx"
 import { getVisibleSpans, SpanPreview, spanPreviewEntries, WaterfallTimeline } from "./Waterfall.tsx"
@@ -21,6 +21,7 @@ export const TraceDetailsPane = ({
 	detailView,
 	focused = false,
 	onSelectSpan,
+	showBottomDivider = false,
 }: {
 	trace: TraceItem | null
 	traceSummary: TraceSummaryItem | null
@@ -35,6 +36,7 @@ export const TraceDetailsPane = ({
 	detailView: DetailView
 	focused?: boolean
 	onSelectSpan: (index: number) => void
+	showBottomDivider?: boolean
 }) => {
 	const filteredSpans = useMemo(
 		() => trace ? getVisibleSpans(trace.spans, collapsedSpanIds) : [],
@@ -146,31 +148,36 @@ export const TraceDetailsPane = ({
 						</TextLine>
 					)}
 				</box>
-				<Divider width={paneWidth} />
+				{showSideBySide && selectedSpan
+					? <SplitDivider leftWidth={splitLeftWidth} junction={"\u252c"} rightWidth={splitRightWidth} />
+					: <Divider width={paneWidth} />}
 				{showSideBySide && selectedSpan ? (
-					<box flexDirection="row" flexGrow={1}>
-						<box width={splitLeftWidth} flexDirection="column" paddingLeft={1} paddingRight={1}>
-							<WaterfallTimeline
-								trace={trace}
-								filteredSpans={filteredSpans}
-								spanLogCounts={spanLogCounts}
-								selectedSpanLogs={selectedSpanLogs}
-								contentWidth={splitContentLeft}
-								bodyLines={waterfallBodyLines}
-								selectedSpanIndex={selectedSpanIndex}
-								collapsedSpanIds={collapsedSpanIds}
-								onSelectSpan={onSelectSpan}
-							/>
+					<>
+						<box flexDirection="row" flexGrow={1}>
+							<box width={splitLeftWidth} flexDirection="column" paddingLeft={1} paddingRight={1}>
+								<WaterfallTimeline
+									trace={trace}
+									filteredSpans={filteredSpans}
+									spanLogCounts={spanLogCounts}
+									selectedSpanLogs={selectedSpanLogs}
+									contentWidth={splitContentLeft}
+									bodyLines={waterfallBodyLines}
+									selectedSpanIndex={selectedSpanIndex}
+									collapsedSpanIds={collapsedSpanIds}
+									onSelectSpan={onSelectSpan}
+								/>
+							</box>
+							<SeparatorColumn height={waterfallBodyLines} />
+							<box width={splitRightWidth} flexDirection="column" paddingLeft={1} paddingRight={1}>
+								{detailView === "span-detail" ? (
+									<SpanDetailView span={selectedSpan} logs={selectedSpanLogs} contentWidth={splitContentRight} bodyLines={waterfallBodyLines} />
+								) : (
+									<SpanPreview span={selectedSpan} logs={selectedSpanLogs} contentWidth={splitContentRight} maxLines={waterfallBodyLines} />
+								)}
+							</box>
 						</box>
-						<SeparatorColumn height={waterfallBodyLines} />
-						<box width={splitRightWidth} flexDirection="column" paddingLeft={1} paddingRight={1}>
-							{detailView === "span-detail" ? (
-								<SpanDetailView span={selectedSpan} logs={selectedSpanLogs} contentWidth={splitContentRight} bodyLines={waterfallBodyLines} />
-							) : (
-								<SpanPreview span={selectedSpan} logs={selectedSpanLogs} contentWidth={splitContentRight} maxLines={waterfallBodyLines} />
-							)}
-						</box>
-					</box>
+						{showBottomDivider ? <SplitDivider leftWidth={splitLeftWidth} junction={"\u2534"} rightWidth={splitRightWidth} /> : null}
+					</>
 				) : (
 					<>
 						<box flexDirection="column" paddingLeft={1} paddingRight={1}>
@@ -196,6 +203,7 @@ export const TraceDetailsPane = ({
 						) : null}
 					</>
 				)}
+				{showBottomDivider && (!showSideBySide || !selectedSpan) ? <Divider width={paneWidth} /> : null}
 			</>
 		) : isLoadingTrace && traceMeta ? (
 			<>

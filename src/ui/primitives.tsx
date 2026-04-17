@@ -1,4 +1,4 @@
-import { TextAttributes } from "@opentui/core"
+import { RGBA, TextAttributes } from "@opentui/core"
 import { colors } from "./theme.ts"
 import { fitCell, truncateText } from "./format.ts"
 import type { DetailView } from "./state.ts"
@@ -81,9 +81,51 @@ export const FilterBar = ({ text, width }: { text: string; width: number }) => (
 	</TextLine>
 )
 
-export const FooterHints = ({ spanNavActive, detailView, autoRefresh, width }: { spanNavActive: boolean; detailView: DetailView; autoRefresh: boolean; width: number }) => {
-	// Group keys by purpose; render as `group: keys  group: keys`.
-	// Only the most-used actions; `?` reveals the full list.
+const FooterKey = ({ label }: { label: string }) => <span fg={colors.count} attributes={TextAttributes.BOLD}>{label}</span>
+
+export const HelpModal = ({ width, height, autoRefresh, onClose }: { width: number; height: number; autoRefresh: boolean; onClose: () => void }) => {
+	const panelWidth = Math.min(76, Math.max(52, width - 10))
+	const left = Math.max(2, Math.floor((width - panelWidth) / 2))
+	const top = Math.max(1, Math.floor(height / 5))
+	const sectionGap = Math.max(1, panelWidth - 24)
+	const row = (key: string, desc: string) => (
+		<TextLine>
+			<span fg={colors.count} attributes={TextAttributes.BOLD}>{key.padEnd(11)}</span>
+			<span fg={colors.muted}>{desc}</span>
+		</TextLine>
+	)
+
+	return (
+		<box position="absolute" zIndex={3000} left={0} top={0} width={width} height={height} backgroundColor={RGBA.fromInts(0, 0, 0, 110)} onMouseUp={onClose}>
+			<box position="absolute" left={left} top={top} width={panelWidth} flexDirection="column" backgroundColor={RGBA.fromInts(20, 20, 28, 255)}>
+				<box paddingLeft={2} paddingRight={2} paddingTop={1} paddingBottom={1} flexDirection="column">
+					<TextLine>
+						<span fg={colors.count} attributes={TextAttributes.BOLD}>Help</span>
+						<span fg={colors.muted}>{" ".repeat(sectionGap)}</span>
+						<span fg={colors.muted}>esc / enter / ? close</span>
+					</TextLine>
+					<BlankRow />
+					{row("j k  ↑ ↓", "move selection")}
+					{row("enter", "select spans / open detail / jump from logs")}
+					{row("esc", "back out of detail or span selection")}
+					{row("tab", "toggle service logs")}
+					{row("[ ]", "switch service")}
+					{row("/", "filter traces")}
+					{row("s", "cycle sort mode")}
+					{row("a", `auto refresh ${autoRefresh ? "on" : "off"}`)}
+					{row("r", "refresh traces")}
+					{row("y", "copy selected trace/span ids")}
+					{row("o / O", "open trace / open web UI")}
+					{row("gg / G", "jump to first / last")}
+					{row("^d / ^u", "page down / up")}
+					{row("q", "quit")}
+				</box>
+			</box>
+		</box>
+	)
+}
+
+export const FooterHints = ({ spanNavActive, detailView, autoRefresh, width: _width }: { spanNavActive: boolean; detailView: DetailView; autoRefresh: boolean; width: number }) => {
 	const enterAction = detailView === "service-logs"
 		? "trace"
 		: spanNavActive && detailView === "waterfall"
@@ -92,37 +134,28 @@ export const FooterHints = ({ spanNavActive, detailView, autoRefresh, width }: {
 	const escAction = spanNavActive
 		? (detailView === "span-detail" ? "back" : "traces")
 		: null
-
-	const nav = "j/k move  ^d/^u page"
-	const action = [
-		`\u21b5 ${enterAction}`,
-		escAction ? `esc ${escAction}` : null,
-		"tab logs",
-		"[/] svc",
-	].filter((x) => x !== null).join("  ")
-	const meta = [
-		"/ filter",
-		"s sort",
-		`a live:${autoRefresh ? "on" : "off"}`,
-		"r refresh",
-	].join("  ")
-	const go = "o open  O web  y ids  ? help  q quit"
+	const items: Array<[string, string]> = [
+		["j/k", "move"],
+		["enter", enterAction],
+		...(escAction ? [["esc", escAction] as [string, string]] : []),
+		["tab", "logs"],
+		["/", "filter"],
+		["s", "sort"],
+		["a", autoRefresh ? "live" : "paused"],
+		["?", "help"],
+		["q", "quit"],
+	]
+	const renderItems = (items: ReadonlyArray<readonly [string, string]>) => (
+		items.flatMap(([key, label], index) => [
+			<FooterKey key={`${key}-key`} label={key} />,
+			<span key={`${key}-label`} fg={colors.muted}>{` ${label}`}</span>,
+			index < items.length - 1 ? <span key={`${key}-sep`} fg={colors.separator}>{" · "}</span> : null,
+		])
+	)
 
 	return (
-		<box flexDirection="column">
-			<TextLine fg={colors.muted}>
-				<span fg={colors.separator}>nav </span>
-				<span>{nav}</span>
-				<span fg={colors.separator}>{"   \u2502   "}</span>
-				<span fg={colors.separator}>do </span>
-				<span>{fitCell(action, Math.max(0, width - (nav.length + 7 + 7 + 4)))}</span>
-			</TextLine>
-			<TextLine fg={colors.muted}>
-				<span fg={colors.separator}>view </span>
-				<span>{meta}</span>
-				<span fg={colors.separator}>{"   \u2502   "}</span>
-				<span>{fitCell(go, Math.max(0, width - (meta.length + 8 + 4)))}</span>
-			</TextLine>
-		</box>
+		<TextLine>
+			{renderItems(items)}
+		</TextLine>
 	)
 }

@@ -194,7 +194,6 @@ export const spanPreviewEntries = (span: TraceSpanItem, logs: readonly LogItem[]
 }
 
 const WaterfallRow = memo(({
-	id,
 	span,
 	logCount,
 	trace,
@@ -206,7 +205,6 @@ const WaterfallRow = memo(({
 	hasChildSpans,
 	onSelect,
 }: {
-	id: string
 	span: TraceSpanItem
 	logCount: number
 	trace: TraceItem
@@ -250,7 +248,7 @@ const WaterfallRow = memo(({
 	const logPad = " ".repeat(Math.max(0, logWidth - logText.length))
 
 	return (
-		<box id={id} height={1} onMouseDown={onSelect}>
+		<box height={1} onMouseDown={onSelect}>
 			<TextLine bg={bg}>
 				{prefix ? <span fg={treeColor}>{prefix}</span> : null}
 				<span fg={indicatorColor}>{indicator}</span>
@@ -344,12 +342,6 @@ export const WaterfallTimeline = ({
 	const selectedSpan = selectedSpanIndex !== null ? filteredSpans[selectedSpanIndex] ?? null : null
 
 	const { labelMaxWidth, durationWidth, barWidth } = getWaterfallLayout(contentWidth, trace.durationMs)
-	const midDuration = formatDuration(trace.durationMs / 2)
-	const endDuration = formatDuration(trace.durationMs)
-
-	const rulerLabel = " ".repeat(labelMaxWidth + 1)
-	const midPoint = Math.floor(barWidth / 2)
-	const rulerBar = `${"0".padEnd(midPoint)}${midDuration.padEnd(barWidth - midPoint)} ${endDuration.padStart(durationWidth)}`
 
 	const spanIndexById = new Map<string, number>()
 	for (let i = 0; i < trace.spans.length; i++) {
@@ -358,7 +350,7 @@ export const WaterfallTimeline = ({
 
 	// Virtual windowing: only render visible rows, shift window only when
 	// the selection would go out of view (no jerkiness).
-	const viewportSize = Math.max(1, bodyLines - 1)
+	const viewportSize = Math.max(1, bodyLines)
 	const scrollOffsetRef = useRef(0)
 	const lastTraceIdRef = useRef<string | null>(null)
 
@@ -384,16 +376,11 @@ export const WaterfallTimeline = ({
 
 	return (
 		<box flexDirection="column">
-			<TextLine fg={colors.muted}>
-				<span>{rulerLabel}</span>
-				<span>{rulerBar}</span>
-			</TextLine>
 			{windowSpans.map((span, index) => {
 				const actualIndex = windowStart + index
 				const fullIndex = spanIndexById.get(span.spanId) ?? -1
 				return (
 					<WaterfallRow
-						id={`waterfall-span-${actualIndex}`}
 						key={`${trace.traceId}-${span.spanId}`}
 						span={span}
 						logCount={spanLogCounts.get(span.spanId) ?? 0}
