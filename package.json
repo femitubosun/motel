@@ -1,8 +1,29 @@
 {
   "name": "motel",
   "version": "0.1.0",
+  "description": "A local OpenTelemetry ingest + TUI viewer for development, backed by SQLite.",
   "type": "module",
   "private": true,
+  "license": "MIT",
+  "author": "Kit Langton",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kitlangton/motel.git"
+  },
+  "homepage": "https://github.com/kitlangton/motel#readme",
+  "bugs": {
+    "url": "https://github.com/kitlangton/motel/issues"
+  },
+  "keywords": [
+    "opentelemetry",
+    "otel",
+    "tracing",
+    "observability",
+    "tui",
+    "sqlite",
+    "effect",
+    "opentui"
+  ],
   "workspaces": ["web"],
   "bin": {
     "motel": "src/motel.ts",

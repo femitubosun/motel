@@ -1,6 +1,32 @@
 # motel
 
-OpenTUI local OTEL viewer for development, with a local SQLite-backed telemetry server, correlated traces, and logs.
+A local OpenTelemetry ingest + TUI viewer for development, backed by SQLite.
+Point your app's OTLP/HTTP exporters at the local motel server and browse
+traces, spans, and logs from a terminal or the built-in web UI.
+
+## Requirements
+
+- [Bun](https://bun.sh/) — v1.1 or newer
+
+## Quick start
+
+```bash
+bun install
+bun run dev
+```
+
+`bun run dev` starts the local OTLP ingest server (on `http://127.0.0.1:27686`)
+and launches the TUI. Press `?` once inside for the keyboard cheat sheet, or
+`c` to copy paste-ready setup instructions for another Effect/OTEL app.
+
+If you just want the server without the TUI (for example, to run it in the
+background and browse the web UI):
+
+```bash
+bun run server
+# then in another terminal
+bun run web:dev
+```
 
 ## Commands
 
