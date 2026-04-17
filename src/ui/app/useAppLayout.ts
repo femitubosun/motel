@@ -70,3 +70,5 @@ export const useAppLayout = ({ width, height, notice, detailView, selectedSpanIn
 		spanPageSize,
 	} as const
 }, [detailView, height, notice, selectedSpanIndex, width])
+
+export type AppLayout = ReturnType<typeof useAppLayout>

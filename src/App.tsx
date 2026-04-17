@@ -5,10 +5,9 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react"
 import { config } from "./config.js"
 import type { LogItem, TraceItem } from "./domain.ts"
 import { formatShortDate, formatTimestamp, traceRowId } from "./ui/format.ts"
-import { AlignedHeaderLine, BlankRow, Divider, FooterHints, HelpModal, PlainLine, SeparatorColumn, SplitDivider, TextLine } from "./ui/primitives.tsx"
-import { TraceListPane } from "./ui/app/TraceListPane.tsx"
+import { Divider, FooterHints, HelpModal, PlainLine, SplitDivider, TextLine } from "./ui/primitives.tsx"
 import { useAppLayout } from "./ui/app/useAppLayout.ts"
-import { ServiceLogsView } from "./ui/ServiceLogs.tsx"
+import { TraceWorkspace } from "./ui/app/TraceWorkspace.tsx"
 import {
 	autoRefreshAtom,
 	collapsedSpanIdsAtom,
@@ -37,9 +36,7 @@ import {
 	traceDetailStateAtom,
 	traceStateAtom,
 } from "./ui/state.ts"
-import { SpanDetailPane } from "./ui/SpanDetailPane.tsx"
 import { colors, SEPARATOR } from "./ui/theme.ts"
-import { TraceDetailsPane } from "./ui/TraceDetailsPane.tsx"
 import { getVisibleSpans } from "./ui/Waterfall.tsx"
 import { useKeyboardNav } from "./ui/useKeyboardNav.ts"
 
@@ -574,173 +571,28 @@ export const App = () => {
 			{showSplit
 				? <SplitDivider leftWidth={leftPaneWidth} junction={"\u252c"} rightWidth={rightPaneWidth} />
 				: <Divider width={contentWidth} />}
-			{detailView === "service-logs" ? (
-				<box flexGrow={1} flexDirection="column" paddingLeft={1} paddingRight={1}>
-					<AlignedHeaderLine
-						left="SERVICE LOGS"
-						right={`${serviceLogState.data.length} logs${serviceLogState.fetchedAt ? `${SEPARATOR}${formatShortDate(serviceLogState.fetchedAt)} ${formatTimestamp(serviceLogState.fetchedAt)}` : ""}`}
-						width={headerFooterWidth}
-						rightFg={colors.count}
-					/>
-					<TextLine>
-						<span fg={colors.defaultService}>{selectedTraceService ?? "unknown"}</span>
-						<span fg={colors.separator}>{SEPARATOR}</span>
-						<span fg={colors.count}>recent logs</span>
-					</TextLine>
-					<BlankRow />
-					<ServiceLogsView
-						serviceName={selectedTraceService}
-						logsState={serviceLogState}
-						selectedIndex={selectedServiceLogIndex}
-						onSelectLog={setSelectedServiceLogIndex}
-						contentWidth={headerFooterWidth}
-						bodyLines={Math.max(8, availableContentHeight - 3)}
-					/>
-				</box>
-			) : isWideLayout ? (
-				/* WIDE LAYOUT. Drill-in slides right:
-				 *   L0: [list focused]  | [waterfall preview]
-				 *   L1: [list context]  | [waterfall focused]
-				 *   L2: [waterfall ctx] | [span-detail focused]
-				 */
-				<box flexGrow={1} flexDirection="row">
-					<box width={leftPaneWidth} height={wideBodyHeight} flexDirection="column">
-						{viewLevel <= 1 ? (
-							<TraceListPane
-								traceListProps={traceListProps}
-								filterMode={filterMode}
-								filterText={filterText}
-								filterWidth={leftContentWidth}
-								containerHeight={wideBodyHeight}
-								bodyHeight={wideTraceListBodyHeight}
-								padding={sectionPadding}
-								scrollRef={traceListScrollRef}
-							/>
-						) : (
-							<TraceDetailsPane
-								trace={selectedTrace}
-								traceSummary={selectedTraceSummary}
-								traceStatus={traceDetailState.status}
-								traceError={traceDetailState.error}
-								traceLogsState={logState}
-								contentWidth={leftContentWidth}
-								bodyLines={wideBodyLines}
-								paneWidth={leftPaneWidth}
-								selectedSpanIndex={selectedSpanIndex}
-								collapsedSpanIds={collapsedSpanIds}
-								focused={false}
-								onSelectSpan={selectSpan}
-							/>
-						)}
-					</box>
-					<SeparatorColumn height={wideBodyHeight} junctionChars={separatorJunctionChars} />
-					<box width={rightPaneWidth} height={wideBodyHeight} flexDirection="column">
-						{viewLevel <= 1 ? (
-							<TraceDetailsPane
-								trace={selectedTrace}
-								traceSummary={selectedTraceSummary}
-								traceStatus={traceDetailState.status}
-								traceError={traceDetailState.error}
-								traceLogsState={logState}
-								contentWidth={rightContentWidth}
-								bodyLines={wideBodyLines}
-								paneWidth={rightPaneWidth}
-								selectedSpanIndex={selectedSpanIndex}
-								collapsedSpanIds={collapsedSpanIds}
-								focused={viewLevel === 1}
-								onSelectSpan={selectSpan}
-							/>
-						) : (
-							<SpanDetailPane
-								span={selectedSpan}
-								trace={selectedTrace}
-								logs={selectedSpanLogs}
-								contentWidth={rightContentWidth}
-								bodyLines={wideBodyLines}
-								paneWidth={rightPaneWidth}
-								focused={true}
-							/>
-						)}
-					</box>
-				</box>
-			) : viewLevel === 0 ? (
-				/* NARROW L0: list on top, trace details below. */
-				<>
-					<TraceListPane
-						traceListProps={traceListProps}
-						filterMode={filterMode}
-						filterText={filterText}
-						filterWidth={leftContentWidth}
-						containerHeight={narrowListHeight}
-						bodyHeight={narrowTraceListBodyHeight}
-						padding={sectionPadding}
-						scrollRef={traceListScrollRef}
-					/>
-					<Divider width={contentWidth} />
-					<TraceDetailsPane
-						trace={selectedTrace}
-						traceSummary={selectedTraceSummary}
-						traceStatus={traceDetailState.status}
-						traceError={traceDetailState.error}
-						traceLogsState={logState}
-						contentWidth={rightContentWidth}
-						bodyLines={narrowBodyLines}
-						paneWidth={contentWidth}
-						selectedSpanIndex={selectedSpanIndex}
-						collapsedSpanIds={collapsedSpanIds}
-						focused={false}
-						onSelectSpan={selectSpan}
-					/>
-				</>
-			) : (
-				/* NARROW L1/L2: 1-line breadcrumb + full-body pane. */
-				<>
-					<box paddingLeft={1} paddingRight={1} height={1} flexDirection="column">
-						<TextLine>
-							<span fg={colors.muted}>TRACES</span>
-							{selectedTraceSummary ? (
-								<>
-									<span fg={colors.separator}>{"  "}{SEPARATOR}{"  "}</span>
-									<span fg={viewLevel === 1 ? colors.accent : colors.muted}>{selectedTraceSummary.rootOperationName}</span>
-								</>
-							) : null}
-							{viewLevel === 2 && selectedSpan ? (
-								<>
-									<span fg={colors.separator}>{"  "}{SEPARATOR}{"  "}</span>
-									<span fg={colors.accent}>{selectedSpan.operationName}</span>
-								</>
-							) : null}
-						</TextLine>
-					</box>
-					<Divider width={contentWidth} />
-					{viewLevel === 1 ? (
-						<TraceDetailsPane
-							trace={selectedTrace}
-							traceSummary={selectedTraceSummary}
-							traceStatus={traceDetailState.status}
-							traceError={traceDetailState.error}
-							traceLogsState={logState}
-							contentWidth={rightContentWidth}
-							bodyLines={narrowFullBodyLines}
-							paneWidth={contentWidth}
-							selectedSpanIndex={selectedSpanIndex}
-							collapsedSpanIds={collapsedSpanIds}
-							focused={true}
-							onSelectSpan={selectSpan}
-						/>
-					) : (
-						<SpanDetailPane
-							span={selectedSpan}
-							trace={selectedTrace}
-							logs={selectedSpanLogs}
-							contentWidth={rightContentWidth}
-							bodyLines={narrowFullBodyLines}
-							paneWidth={contentWidth}
-							focused={true}
-						/>
-					)}
-				</>
-			)}
+			<TraceWorkspace
+				layout={layout}
+				detailView={detailView}
+				filterMode={filterMode}
+				filterText={filterText}
+				traceListProps={traceListProps}
+				traceListScrollRef={traceListScrollRef}
+				selectedTraceService={selectedTraceService}
+				serviceLogState={serviceLogState}
+				selectedServiceLogIndex={selectedServiceLogIndex}
+				setSelectedServiceLogIndex={setSelectedServiceLogIndex}
+				traceDetailState={traceDetailState}
+				selectedTrace={selectedTrace}
+				selectedTraceSummary={selectedTraceSummary}
+				logState={logState}
+				selectedSpanIndex={selectedSpanIndex}
+				collapsedSpanIds={collapsedSpanIds}
+				viewLevel={viewLevel}
+				selectedSpan={selectedSpan}
+				selectedSpanLogs={selectedSpanLogs}
+				selectSpan={selectSpan}
+			/>
 			{footerHeight > 0 ? (
 				<>
 					{showSplit
