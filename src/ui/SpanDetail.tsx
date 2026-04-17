@@ -1,6 +1,6 @@
 import { TextAttributes } from "@opentui/core"
 import type { LogItem, TraceSpanItem } from "../domain.ts"
-import { formatDuration, formatTimestamp, lifecycleLabel, logSeverityColor, relevantLogAttributes, truncateText, wrapTextLines } from "./format.ts"
+import { formatTimestamp, logSeverityColor, relevantLogAttributes, truncateText, wrapTextLines } from "./format.ts"
 import { BlankRow, PlainLine, TextLine } from "./primitives.tsx"
 import { colors, SEPARATOR } from "./theme.ts"
 
@@ -26,21 +26,12 @@ export const SpanDetailView = ({
 	const reservedForLogs = visibleLogs.length > 0 ? visibleLogs.reduce((total, log) => total + 3 + Math.min(3, wrapTextLines(log.body, Math.max(16, contentWidth - 2), 3).length), 1) : 0
 	const maxTagLines = Math.max(0, bodyLines - 4 - reservedForWarnings - reservedForEvents - reservedForLogs)
 
+	// NOTE: op name, service, duration, lifecycle, status, and spanId are all
+	// rendered by the enclosing SpanDetailPane header (rows 0..2). Starting
+	// the body at TAGS avoids the visible duplication where the pane meta
+	// and the first two body lines mirrored each other.
 	return (
 		<box flexDirection="column">
-			<TextLine>
-				<span fg={colors.text}>{span.operationName}</span>
-			</TextLine>
-			<TextLine>
-				<span fg={colors.defaultService}>{span.serviceName}</span>
-				<span fg={colors.separator}>{SEPARATOR}</span>
-				<span fg={colors.count}>{formatDuration(span.durationMs)}</span>
-				<span fg={colors.separator}>{SEPARATOR}</span>
-				<span fg={span.isRunning ? colors.warning : colors.muted}>{lifecycleLabel(span)}</span>
-				<span fg={colors.separator}>{SEPARATOR}</span>
-				<span fg={span.status === "error" ? colors.error : colors.passing}>{span.status}</span>
-			</TextLine>
-			<BlankRow />
 			{tagEntries.length > 0 ? (
 				<>
 					<TextLine>
