@@ -141,6 +141,10 @@ interface TraceSummaryRow {
 	readonly error_count: number
 }
 
+type InternalTraceSpanItem = TraceSpanItem & {
+	readonly syntheticMissingParent?: boolean
+}
+
 const isSpanRunning = (startTimeMs: number, endTimeMs: number) => endTimeMs <= 0 || endTimeMs < startTimeMs
 
 const liveDurationMs = (startTimeMs: number, endTimeMs: number, isRunning: boolean) =>
@@ -194,7 +198,7 @@ const parseEvents = (value: string): readonly TraceSpanEvent[] => {
 	}
 }
 
-const parseSpanRow = (row: SpanRow): TraceSpanItem => {
+const parseSpanRow = (row: SpanRow): InternalTraceSpanItem => {
 	const isRunning = isSpanRunning(row.start_time_ms, row.end_time_ms)
 	return {
 		spanId: row.span_id,
@@ -232,8 +236,8 @@ const parseLogRow = (row: LogRow): LogItem => ({
 	},
 })
 
-const orderTraceSpans = (spans: readonly TraceSpanItem[]) => {
-	const childrenByParent = new Map<string | null, TraceSpanItem[]>()
+const orderTraceSpans = (spans: readonly InternalTraceSpanItem[]) => {
+	const childrenByParent = new Map<string | null, InternalTraceSpanItem[]>()
 	const spanIds = new Set(spans.map((span) => span.spanId))
 
 	for (const span of spans) {
@@ -244,10 +248,12 @@ const orderTraceSpans = (spans: readonly TraceSpanItem[]) => {
 	}
 
 	for (const siblings of childrenByParent.values()) {
-		siblings.sort((left, right) => left.startTime.getTime() - right.startTime.getTime())
+		siblings.sort((left, right) =>
+			left.startTime.getTime() - right.startTime.getTime() || Number(Boolean(left.syntheticMissingParent)) - Number(Boolean(right.syntheticMissingParent))
+		)
 	}
 
-	const ordered: Array<TraceSpanItem> = []
+	const ordered: Array<InternalTraceSpanItem> = []
 	const visit = (parent: string | null, depth: number) => {
 		for (const child of childrenByParent.get(parent) ?? []) {
 			ordered.push({ ...child, depth })
@@ -261,15 +267,49 @@ const orderTraceSpans = (spans: readonly TraceSpanItem[]) => {
 
 const buildTrace = (traceId: string, spanRows: readonly SpanRow[]): TraceItem => {
 	const parsedSpans = spanRows.map(parseSpanRow)
-	const orderedSpans = orderTraceSpans(parsedSpans)
+	const spanIds = new Set(parsedSpans.map((span) => span.spanId))
+	const missingParentGroups = new Map<string, InternalTraceSpanItem[]>()
+
+	for (const span of parsedSpans) {
+		if (span.parentSpanId !== null && !spanIds.has(span.parentSpanId)) {
+			const siblings = missingParentGroups.get(span.parentSpanId) ?? []
+			siblings.push(span)
+			missingParentGroups.set(span.parentSpanId, siblings)
+		}
+	}
+
+	const syntheticParents: InternalTraceSpanItem[] = [...missingParentGroups.entries()].map(([missingParentId, children]) => {
+		const firstChild = children[0]!
+		const startedAtMs = Math.min(...children.map((child) => child.startTime.getTime()))
+		const endedAtMs = Math.max(...children.map((child) => child.startTime.getTime() + child.durationMs))
+		return {
+			spanId: missingParentId,
+			parentSpanId: null,
+			serviceName: firstChild.serviceName,
+			scopeName: null,
+			kind: null,
+			operationName: `[missing parent ${missingParentId.slice(0, 8)}]`,
+			startTime: new Date(startedAtMs),
+			isRunning: children.some((child) => child.isRunning),
+			durationMs: Math.max(0, endedAtMs - startedAtMs),
+			status: "error",
+			depth: 0,
+			tags: {},
+			warnings: [`missing span ${missingParentId} (${children.length} child${children.length === 1 ? "" : "ren"})`],
+			events: [],
+			syntheticMissingParent: true,
+		}
+	})
+
+	const orderedSpans = orderTraceSpans([...parsedSpans, ...syntheticParents])
 	const startedAtMs = Math.min(...orderedSpans.map((span) => span.startTime.getTime()))
 	const endedAtMs = Math.max(...orderedSpans.map((span) => span.startTime.getTime() + span.durationMs))
 	const isRunning = orderedSpans.some((span) => span.isRunning)
-	const rootSpan = orderedSpans[0] ?? null
-	const spanIds = new Set(orderedSpans.map((span) => span.spanId))
-	const warnings = orderedSpans
-		.filter((span) => span.parentSpanId !== null && !spanIds.has(span.parentSpanId))
-		.map((span) => `missing parent ${span.parentSpanId} for ${span.operationName}`)
+	const rootSpan = orderedSpans.find((span) => !span.syntheticMissingParent && span.parentSpanId === null)
+		?? orderedSpans.find((span) => !span.syntheticMissingParent)
+		?? orderedSpans[0]
+		?? null
+	const warnings = syntheticParents.map((span) => span.warnings[0]!).filter((warning) => warning.length > 0)
 
 	return {
 		traceId,
@@ -281,7 +321,7 @@ const buildTrace = (traceId: string, spanRows: readonly SpanRow[]): TraceItem =>
 		spanCount: orderedSpans.length,
 		errorCount: orderedSpans.filter((span) => span.status === "error").length,
 		warnings,
-		spans: orderedSpans,
+		spans: orderedSpans.map(({ syntheticMissingParent: _, ...span }) => span),
 	}
 }
 

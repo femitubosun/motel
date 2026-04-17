@@ -1,8 +1,9 @@
 import { useMemo } from "react"
 import type { TraceItem, TraceSummaryItem } from "../domain.ts"
 import { formatDuration, formatShortDate, formatTimestamp, lifecycleLabel } from "./format.ts"
-import { AlignedHeaderLine, BlankRow, Divider, PlainLine, SeparatorColumn, TextLine } from "./primitives.tsx"
+import { AlignedHeaderLine, Divider, PlainLine, SeparatorColumn, TextLine } from "./primitives.tsx"
 import { SpanDetailView } from "./SpanDetail.tsx"
+import { SpanDetailFullView } from "./SpanDetailFull.tsx"
 import { getVisibleSpans, SpanPreview, spanPreviewEntries, WaterfallTimeline } from "./Waterfall.tsx"
 import type { DetailView, LoadStatus, LogState } from "./state.ts"
 import { colors, SEPARATOR } from "./theme.ts"
@@ -54,22 +55,24 @@ export const TraceDetailsPane = ({
 		[selectedSpan, traceLogsState.data],
 	)
 	const traceMeta = trace ?? traceSummary
-	const isLoadingTrace = traceStatus === "loading" && traceSummary !== null && trace === null
+	const hasTraceSelection = traceSummary !== null
+	const isLoadingTrace = hasTraceSelection && trace === null && traceStatus !== "error"
 	const focusIndicator = focused ? "\u25b8 " : ""
-	const detailHeaderTitle = detailView === "span-detail" && selectedSpan
+	const showingSpanDetailFull = detailView === "span-detail" && selectedSpan
+	const detailHeaderTitle = showingSpanDetailFull
 		? `${focusIndicator}SPAN DETAIL`
-			: `${focusIndicator}TRACE DETAILS`
+		: `${focusIndicator}TRACE DETAILS`
 	// Right-aligned header meta. Avoid duplicating `lifecycleLabel` (which we also
 	// show on the row beneath the op name). Pick the most important signals:
 	// status (errors / healthy / running), duration, logs.
-	const detailHeaderRight = detailView === "span-detail" && selectedSpan
+	const detailHeaderRight = showingSpanDetailFull
 		? `${selectedSpan.status} \u00b7 ${formatDuration(selectedSpan.durationMs)}${selectedSpanLogs.length > 0 ? ` \u00b7 ${selectedSpanLogs.length} logs` : ""}`
 		: traceMeta
 			? `${traceMeta.errorCount > 0 ? `${traceMeta.errorCount} errors` : traceMeta.isRunning ? "running" : isLoadingTrace ? "loading" : "healthy"} \u00b7 ${formatDuration(traceMeta.durationMs)}${traceLogCount > 0 ? ` \u00b7 ${traceLogCount} logs` : ""}`
 			: traceStatus === "error"
 				? "trace unavailable"
 				: "waiting for trace"
-	const detailHeaderColor = detailView === "span-detail" && selectedSpan
+	const detailHeaderColor = showingSpanDetailFull
 		? selectedSpan.isRunning
 			? colors.warning
 			: selectedSpan.status === "error"
@@ -215,7 +218,7 @@ export const TraceDetailsPane = ({
 					<PlainLine text="Loading trace details..." fg={colors.count} />
 				</box>
 			</>
-		) : traceStatus === "error" ? (
+		) : hasTraceSelection && traceStatus === "error" ? (
 			<box flexDirection="column" paddingLeft={1} paddingRight={1}>
 				<PlainLine text={traceError ?? "Could not load trace."} fg={colors.error} />
 			</box>

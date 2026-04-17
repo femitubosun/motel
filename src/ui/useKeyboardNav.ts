@@ -169,6 +169,49 @@ export const useKeyboardNav = (params: KeyboardNavParams) => {
 		if (message) s.flashNotice(message)
 	}
 
+	const copySelectedIds = () => {
+		const s = $()
+		if (s.serviceLogNavActive) {
+			const selectedLog = s.serviceLogState.data[s.selectedServiceLogIndex]
+			if (!selectedLog?.traceId) {
+				s.flashNotice("No trace id to copy")
+				return
+			}
+			const lines = [
+				`traceId=${selectedLog.traceId}`,
+				selectedLog.spanId ? `spanId=${selectedLog.spanId}` : null,
+			].filter((line): line is string => line !== null).join("\n")
+			void copyToClipboard(lines)
+				.then(() => {
+					s.flashNotice(selectedLog.spanId ? "Copied trace and span ids" : "Copied trace id")
+				})
+				.catch((error) => {
+					s.flashNotice(error instanceof Error ? error.message : String(error))
+				})
+			return
+		}
+
+		if (!s.selectedTrace) {
+			s.flashNotice("No trace selected")
+			return
+		}
+
+		const visibleSpans = getVisibleSpans(s.selectedTrace.spans, s.collapsedSpanIds)
+		const selectedSpan = s.selectedSpanIndex !== null ? visibleSpans[s.selectedSpanIndex] ?? null : null
+		const lines = [
+			`traceId=${s.selectedTrace.traceId}`,
+			selectedSpan ? `spanId=${selectedSpan.spanId}` : null,
+		].filter((line): line is string => line !== null).join("\n")
+
+		void copyToClipboard(lines)
+			.then(() => {
+				s.flashNotice(selectedSpan ? "Copied trace and span ids" : "Copied trace id")
+			})
+			.catch((error) => {
+				s.flashNotice(error instanceof Error ? error.message : String(error))
+			})
+	}
+
 	const toggleServiceLogsView = () => {
 		const s = $()
 		if (!s.selectedTraceService && !s.selectedTrace) return
@@ -449,6 +492,10 @@ export const useKeyboardNav = (params: KeyboardNavParams) => {
 		if (key.name === "o" && key.shift) {
 			void Bun.spawn({ cmd: ["open", webUiUrl()], stdout: "ignore", stderr: "ignore" })
 			s.flashNotice("Opened web UI")
+			return
+		}
+		if (key.name === "y" || key.name === "Y") {
+			copySelectedIds()
 			return
 		}
 		if (key.name === "c" || key.name === "C") {

@@ -91,6 +91,7 @@ const renderWaterfallBar = (
 	barWidth: number,
 	barColor: string,
 	laneColor: string,
+	laneDotColor: string,
 ): { readonly segments: readonly WaterfallBarSegment[]; readonly afterCells: number } => {
 	if (barWidth < 3 || trace.durationMs === 0) {
 		return {
@@ -114,14 +115,14 @@ const renderWaterfallBar = (
 	const segments: WaterfallBarSegment[] = []
 
 	if (startCell > 0) {
-		segments.push({ text: "\u00b7".repeat(startCell), fg: laneColor })
+		segments.push({ text: "\u00b7".repeat(startCell), fg: laneDotColor })
 	}
 
 	if (startCell === endCell) {
 		const singleCellUnits = Math.max(1, endUnits - startUnits)
 		if (singleCellUnits <= 4) {
 			const centeredMarker = ULTRA_SHORT_MARKERS[Math.max(0, singleCellUnits - 1)] ?? "\u258f"
-			segments.push({ text: centeredMarker, fg: barColor, bg: laneColor })
+			segments.push({ text: centeredMarker, fg: barColor })
 			return {
 				segments,
 				afterCells: Math.max(0, barWidth - startCell - 1),
@@ -129,7 +130,7 @@ const renderWaterfallBar = (
 		}
 
 		if (startOffset === 0) {
-			segments.push({ text: PARTIAL_BLOCKS[singleCellUnits], fg: barColor, bg: laneColor })
+			segments.push({ text: PARTIAL_BLOCKS[singleCellUnits], fg: barColor })
 		} else {
 			segments.push({ text: PARTIAL_BLOCKS[startOffset], fg: laneColor, bg: barColor })
 		}
@@ -151,7 +152,7 @@ const renderWaterfallBar = (
 	}
 
 	if (endOffset > 0) {
-		segments.push({ text: PARTIAL_BLOCKS[endOffset], fg: barColor, bg: laneColor })
+		segments.push({ text: PARTIAL_BLOCKS[endOffset], fg: barColor })
 	}
 
 	return {
@@ -234,17 +235,18 @@ const WaterfallRow = memo(({
 	const isError = span.status === "error"
 	const barColor = selected ? (isError ? waterfallColors.barSelectedError : waterfallColors.barSelected) : isError ? waterfallColors.barError : waterfallColors.bar
 	const laneColor = waterfallColors.barBg
-	const { segments, afterCells } = renderWaterfallBar(span, trace, barWidth, barColor, laneColor)
+	const laneDotColor = waterfallColors.barLane
+	const { segments, afterCells } = renderWaterfallBar(span, trace, barWidth, barColor, laneColor, laneDotColor)
 	const bg = selected ? colors.selectedBg : undefined
 	const treeColor = selected ? colors.separator : colors.treeLine
 	const indicatorColor = isError ? colors.error : hasChildSpans ? (selected ? colors.selectedText : colors.muted) : colors.passing
 	const opColor = selected ? colors.selectedText : span.isRunning ? colors.warning : colors.text
 
-	// Place duration immediately after the bar (not at a fixed right-aligned column).
-	// Fill the rest with transparent padding so the logText stays right-aligned.
-	const durationStr = duration
-	const spaceAfterLen = Math.max(0, afterCells - (durationStr ? durationStr.length + 1 : 0))
-	const durationGap = durationStr ? " " : ""
+	// Pad the bar to its full `barWidth` so the duration column is always at a
+	// fixed offset, matching the ruler's right-aligned end marker.
+	const barTrailingPad = " ".repeat(afterCells)
+	const durationStr = duration.padStart(durationWidth)
+	const logPad = " ".repeat(Math.max(0, logWidth - logText.length))
 
 	return (
 		<box id={id} height={1} onMouseDown={onSelect}>
@@ -257,10 +259,10 @@ const WaterfallRow = memo(({
 				{segments.map((segment, index) => (
 					<span key={`${span.spanId}-bar-${index}`} fg={segment.fg} bg={segment.bg}>{segment.text}</span>
 				))}
-				<span>{durationGap}</span>
+				<span>{barTrailingPad}</span>
+				<span> </span>
 				<span fg={selected ? colors.accent : colors.count}>{durationStr}</span>
-				<span>{" ".repeat(spaceAfterLen)}</span>
-				<span>{" ".repeat(Math.max(0, logWidth - logText.length))}</span>
+				<span>{logPad}</span>
 				<span fg={logCount > 0 ? colors.defaultService : colors.muted}>{logText}</span>
 			</TextLine>
 		</box>

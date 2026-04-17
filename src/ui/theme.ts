@@ -19,6 +19,7 @@ export const waterfallColors = {
 	bar: "#f4a51c",
 	barError: "#f97316",
 	barBg: "#2a2520",
+	barLane: "#4a4338",
 	barSelected: "#e8c547",
 	barSelectedError: "#ff8c42",
 } as const

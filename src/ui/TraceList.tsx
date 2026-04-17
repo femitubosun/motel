@@ -11,7 +11,8 @@ const getTraceRowLayout = (contentWidth: number) => {
 	const durationWidth = 8
 	const countWidth = 7
 	const ageWidth = 6
-	const titleWidth = Math.max(8, contentWidth - stateWidth - durationWidth - countWidth - ageWidth - 3)
+	// gaps: 1 after state, 1 after duration, 1 after count, plus 2 slack on the right
+	const titleWidth = Math.max(8, contentWidth - stateWidth - durationWidth - countWidth - ageWidth - 5)
 	return { stateWidth, durationWidth, countWidth, ageWidth, titleWidth }
 }
 
@@ -39,7 +40,9 @@ const TraceRow = ({
 				<span> </span>
 				<span fg={titleColor}>{fitCell(title, titleWidth)}</span>
 				<span fg={selected ? colors.accent : colors.count}>{fitCell(trace.durationMs >= 1 ? formatDuration(trace.durationMs) : "", durationWidth, "right")}</span>
+				<span> </span>
 				<span fg={colors.muted}>{fitCell(`${trace.spanCount}sp`, countWidth, "right")}</span>
+				<span> </span>
 				<span fg={colors.muted}>{fitCell(relativeTime(trace.startedAt), ageWidth, "right")}</span>
 			</TextLine>
 		</box>
@@ -79,9 +82,9 @@ export const TraceList = ({
 		const filterLabel = filterText ? ` \u00b7 filter: ${filterText}` : ""
 		const sortLabel = sortMode && sortMode !== "recent" ? ` \u00b7 sort: ${sortMode}` : ""
 		const countLabel = totalCount !== undefined && totalCount !== traces.length ? ` (${traces.length}/${totalCount})` : ` (${traces.length})`
-		const serviceLabel = selectedService
-			? `svc: ${selectedService}${services.length > 1 ? ` (${services.length})` : ""}`
-			: "waiting for traces"
+		const serviceLabel = services.length > 1 && selectedService
+			? `${services.length} services`
+			: ""
 		return (
 			<AlignedHeaderLine
 				left={`TRACES${countLabel}${filterLabel}${sortLabel}`}

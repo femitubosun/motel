@@ -106,18 +106,18 @@ export const FooterHints = ({ spanNavActive, detailView, autoRefresh, width }: {
 		`a live:${autoRefresh ? "on" : "off"}`,
 		"r refresh",
 	].join("  ")
-	const go = "o open  O web  ? help  q quit"
+	const go = "o open  O web  y ids  ? help  q quit"
 
 	return (
 		<box flexDirection="column">
-			<TextLine fg={colors.muted} bg={colors.footerBg}>
+			<TextLine fg={colors.muted}>
 				<span fg={colors.separator}>nav </span>
 				<span>{nav}</span>
 				<span fg={colors.separator}>{"   \u2502   "}</span>
 				<span fg={colors.separator}>do </span>
 				<span>{fitCell(action, Math.max(0, width - (nav.length + 7 + 7 + 4)))}</span>
 			</TextLine>
-			<TextLine fg={colors.muted} bg={colors.footerBg}>
+			<TextLine fg={colors.muted}>
 				<span fg={colors.separator}>view </span>
 				<span>{meta}</span>
 				<span fg={colors.separator}>{"   \u2502   "}</span>

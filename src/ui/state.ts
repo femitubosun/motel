@@ -9,7 +9,7 @@ import { LogQueryService } from "../services/LogQueryService.ts"
 import { TraceQueryService } from "../services/TraceQueryService.ts"
 
 export type LoadStatus = "loading" | "ready" | "error"
-export type DetailView = "waterfall" | "span-detail-full" | "service-logs"
+export type DetailView = "waterfall" | "span-detail" | "service-logs"
 
 export interface TraceState {
 	readonly status: LoadStatus
