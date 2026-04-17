@@ -8,6 +8,8 @@ export class TraceQueryService extends Context.Service<
 		readonly listServices: Effect.Effect<readonly string[], Error>
 		readonly listRecentTraces: (serviceName: string, options?: { readonly lookbackMinutes?: number; readonly limit?: number }) => Effect.Effect<readonly TraceItem[], Error>
 		readonly listTraceSummaries: (serviceName: string, options?: { readonly lookbackMinutes?: number; readonly limit?: number }) => Effect.Effect<readonly TraceSummaryItem[], Error>
+		readonly searchTraceSummaries: (input: { readonly serviceName?: string | null; readonly operation?: string | null; readonly status?: "ok" | "error" | null; readonly minDurationMs?: number | null; readonly lookbackMinutes?: number; readonly limit?: number; readonly attributeFilters?: Readonly<Record<string, string>> }) => Effect.Effect<readonly TraceSummaryItem[], Error>
+		readonly listFacets: (input: { readonly type: "traces" | "logs"; readonly field: string; readonly serviceName?: string | null; readonly key?: string | null; readonly lookbackMinutes?: number; readonly limit?: number }) => Effect.Effect<readonly { readonly value: string; readonly count: number }[], Error>
 		readonly searchTraces: (input: { readonly serviceName?: string | null; readonly operation?: string | null; readonly status?: "ok" | "error" | null; readonly minDurationMs?: number | null; readonly lookbackMinutes?: number; readonly limit?: number; readonly attributeFilters?: Readonly<Record<string, string>> }) => Effect.Effect<readonly TraceItem[], Error>
 		readonly traceStats: (input: { readonly groupBy: string; readonly agg: "count" | "avg_duration" | "p95_duration" | "error_rate"; readonly serviceName?: string | null; readonly operation?: string | null; readonly status?: "ok" | "error" | null; readonly minDurationMs?: number | null; readonly lookbackMinutes?: number; readonly limit?: number; readonly attributeFilters?: Readonly<Record<string, string>> }) => Effect.Effect<readonly { readonly group: string; readonly value: number; readonly count: number }[], Error>
 		readonly getTrace: (traceId: string) => Effect.Effect<TraceItem | null, Error>
@@ -60,6 +62,8 @@ export const TraceQueryServiceLive = Layer.effect(
 			listServices,
 			listRecentTraces,
 			listTraceSummaries,
+			searchTraceSummaries: store.searchTraceSummaries,
+			listFacets: store.listFacets,
 			searchTraces: store.searchTraces,
 			traceStats: store.traceStats,
 			getTrace,

@@ -504,6 +504,7 @@ const TelemetryGroupLive = HttpApiBuilder.group(
 							type,
 							field,
 							serviceName: url.searchParams.get("service"),
+							key: url.searchParams.get("key"),
 							lookbackMinutes: parseLookbackMinutes(url.searchParams.get("lookback"), config.otel.traceLookbackMinutes),
 							limit: parseLimit(url.searchParams.get("limit"), 20),
 						}),

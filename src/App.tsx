@@ -7,10 +7,20 @@ import { Divider, FooterHints, HelpModal, PlainLine, SplitDivider, TextLine } fr
 import { useAppLayout } from "./ui/app/useAppLayout.ts"
 import { useTraceScreenData } from "./ui/app/useTraceScreenData.ts"
 import { TraceWorkspace } from "./ui/app/TraceWorkspace.tsx"
-import { noticeAtom, persistSelectedTheme, selectedThemeAtom } from "./ui/state.ts"
+import {
+	attrPickerIndexAtom,
+	attrPickerInputAtom,
+	attrPickerModeAtom,
+	attrFacetStateAtom,
+	noticeAtom,
+	persistSelectedTheme,
+	selectedThemeAtom,
+} from "./ui/state.ts"
 import { applyTheme, colors, SEPARATOR, themeLabel } from "./ui/theme.ts"
 import { getVisibleSpans } from "./ui/Waterfall.tsx"
 import { useKeyboardNav } from "./ui/useKeyboardNav.ts"
+import { AttrFilterModal } from "./ui/AttrFilterModal.tsx"
+import { useAttrFilterPicker } from "./ui/useAttrFilterPicker.ts"
 
 export const App = () => {
 	const { width, height } = useTerminalDimensions()
@@ -36,11 +46,18 @@ export const App = () => {
 		autoRefresh,
 		filterMode,
 		filterText,
+		activeAttrKey,
+		activeAttrValue,
 		traceSort,
 		selectedTraceSummary,
 		selectedTrace,
 		filteredTraces,
 	} = useTraceScreenData()
+	const [pickerMode] = useAtom(attrPickerModeAtom)
+	const [pickerInput] = useAtom(attrPickerInputAtom)
+	const [pickerIndex] = useAtom(attrPickerIndexAtom)
+	const [attrFacets] = useAtom(attrFacetStateAtom)
+	useAttrFilterPicker(activeAttrKey)
 
 	const layout = useAppLayout({ width, height, notice, detailView, selectedSpanIndex })
 	const {
@@ -124,12 +141,30 @@ export const App = () => {
 			nextTop = indexInList - viewportRows + 1
 		}
 		nextTop = Math.max(0, Math.min(nextTop, maxTop))
-		if (nextTop !== currentTop) {
-			box.scrollTop = nextTop
-		}
 
+		// Update refs immediately (synchronously) so the next render sees the
+		// right "previous" state even if the deferred scrollTop assignment
+		// hasn't fired yet.
 		lastSelectedTraceIndexRef.current = indexInList
 		lastSelectedTraceIdRef.current = traceId
+
+		if (nextTop === currentTop) return
+
+		// CRITICAL: defer the scrollTop assignment. opentui recomputes Yoga
+		// layout during its next RENDER pass (inside `render()`, not during
+		// React commit), so at this point the scrollbar's `scrollSize` still
+		// reflects the PRE-refresh content height. Setting scrollTop now
+		// would clamp against the stale max — e.g., asking for 120 on a
+		// 100-row scrollbar gets clamped to 80, and the selected row jumps
+		// off-screen every time new traces arrive. setTimeout(0) runs on the
+		// next event-loop task, after the render pass has settled and the
+		// scrollbar knows the new bounds.
+		const id = setTimeout(() => {
+			const box2 = traceListScrollRef.current
+			if (!box2) return
+			box2.scrollTop = nextTop
+		}, 0)
+		return () => clearTimeout(id)
 	}, [filteredTraces, selectedTraceIndex, selectedTraceSummary?.traceId, traceSort, traceViewportRows])
 
 	const { spanNavActive } = useKeyboardNav({
@@ -145,12 +180,15 @@ export const App = () => {
 
 	const headerServiceLabel = selectedTraceService ?? "none"
 	const autoLabel = autoRefresh ? "● live" : "○ paused"
+	const attrFilterLabel = activeAttrKey && activeAttrValue
+		? `  [${activeAttrKey}=${activeAttrValue.length > 20 ? `${activeAttrValue.slice(0, 19)}…` : activeAttrValue}]`
+		: ""
 	const headerRight = traceState.fetchedAt
 		? `${autoLabel}  ${formatTimestamp(traceState.fetchedAt)}`
 		: traceState.status === "loading"
 			? "loading traces..."
 			: ""
-	const headerLeftLen = "MOTEL".length + SEPARATOR.length + headerServiceLabel.length
+	const headerLeftLen = "MOTEL".length + SEPARATOR.length + headerServiceLabel.length + attrFilterLabel.length
 	const headerGap = Math.max(2, headerFooterWidth - headerLeftLen - headerRight.length)
 	const visibleFooterNotice = footerNotice
 
@@ -196,6 +234,7 @@ export const App = () => {
 					<span fg={colors.muted} attributes={TextAttributes.BOLD}>MOTEL</span>
 					<span fg={colors.separator}>{SEPARATOR}</span>
 					<span fg={colors.muted}>{headerServiceLabel}</span>
+					{attrFilterLabel ? <span fg={colors.accent} attributes={TextAttributes.BOLD}>{attrFilterLabel}</span> : null}
 					<span fg={colors.muted}>{" ".repeat(headerGap)}</span>
 					<span fg={colors.muted} attributes={TextAttributes.BOLD}>{headerRight}</span>
 				</TextLine>
@@ -240,6 +279,18 @@ export const App = () => {
 				</>
 			) : null}
 			{showHelp ? <HelpModal width={width ?? 100} height={height ?? 24} autoRefresh={autoRefresh} themeLabel={themeLabel(selectedTheme)} onClose={() => setShowHelp(false)} /> : null}
+			{pickerMode !== "off" ? (
+				<AttrFilterModal
+					width={width ?? 100}
+					height={height ?? 24}
+					mode={pickerMode}
+					input={pickerInput}
+					selectedIndex={pickerIndex}
+					selectedKey={activeAttrKey}
+					state={attrFacets}
+					onClose={() => { /* handled via keyboard */ }}
+				/>
+			) : null}
 		</box>
 	)
 }

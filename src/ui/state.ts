@@ -106,6 +106,32 @@ export const autoRefreshAtom = Atom.make(false).pipe(Atom.keepAlive)
 export const filterModeAtom = Atom.make(false).pipe(Atom.keepAlive)
 export const filterTextAtom = Atom.make("").pipe(Atom.keepAlive)
 
+// Attribute filter (F key): pick a span-attribute key + exact value to restrict the trace list.
+export type AttrPickerMode = "off" | "keys" | "values"
+export const attrPickerModeAtom = Atom.make<AttrPickerMode>("off").pipe(Atom.keepAlive)
+export const attrPickerInputAtom = Atom.make("").pipe(Atom.keepAlive)
+export const attrPickerIndexAtom = Atom.make(0).pipe(Atom.keepAlive)
+
+export interface AttrFacetState {
+	readonly status: LoadStatus
+	readonly key: string | null // null when loading keys; set when loading values
+	readonly data: readonly { readonly value: string; readonly count: number }[]
+	readonly error: string | null
+}
+
+export const initialAttrFacetState: AttrFacetState = {
+	status: "ready",
+	key: null,
+	data: [],
+	error: null,
+}
+
+export const attrFacetStateAtom = Atom.make(initialAttrFacetState).pipe(Atom.keepAlive)
+
+// Applied filter (drives trace list query)
+export const activeAttrKeyAtom = Atom.make<string | null>(null).pipe(Atom.keepAlive)
+export const activeAttrValueAtom = Atom.make<string | null>(null).pipe(Atom.keepAlive)
+
 const lastThemePath = `${dirname(config.otel.databasePath)}/last-theme.txt`
 const readLastTheme = (): ThemeName => {
 	try {
@@ -132,6 +158,12 @@ export const collapsedSpanIdsAtom = Atom.make(new Set<string>() as ReadonlySet<s
 
 export const loadTraceServices = () => queryRuntime.runPromise(Effect.flatMap(TraceQueryService.asEffect(), (service) => service.listServices))
 export const loadRecentTraceSummaries = (serviceName: string) => queryRuntime.runPromise(Effect.flatMap(TraceQueryService.asEffect(), (service) => service.listTraceSummaries(serviceName)))
+export const loadFilteredTraceSummaries = (serviceName: string, attributeFilters: Readonly<Record<string, string>>) =>
+	queryRuntime.runPromise(Effect.flatMap(TraceQueryService.asEffect(), (service) => service.searchTraceSummaries({ serviceName, attributeFilters, limit: config.otel.traceFetchLimit })))
+export const loadTraceAttributeKeys = (serviceName: string) =>
+	queryRuntime.runPromise(Effect.flatMap(TraceQueryService.asEffect(), (service) => service.listFacets({ type: "traces", field: "attribute_keys", serviceName, limit: 200 })))
+export const loadTraceAttributeValues = (serviceName: string, key: string) =>
+	queryRuntime.runPromise(Effect.flatMap(TraceQueryService.asEffect(), (service) => service.listFacets({ type: "traces", field: "attribute_values", serviceName, key, limit: 200 })))
 export const loadTraceDetail = (traceId: string) => queryRuntime.runPromise(Effect.flatMap(TraceQueryService.asEffect(), (service) => service.getTrace(traceId)))
 export const loadTraceLogs = (traceId: string) => queryRuntime.runPromise(Effect.flatMap(LogQueryService.asEffect(), (service) => service.listTraceLogs(traceId)))
 export const loadServiceLogs = (serviceName: string) => queryRuntime.runPromise(Effect.flatMap(LogQueryService.asEffect(), (service) => service.listRecentLogs(serviceName)))

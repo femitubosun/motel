@@ -36,6 +36,7 @@
 - `/api/ai/calls` searches AI SDK calls (streamText, generateText, etc.) with first-class filters for `model`, `provider`, `sessionId`, `functionId`, `operation`, `status`, `text` (cross-field search), and returns compact summaries with previews and token usage.
 - `/api/ai/calls/<span-id>` returns the full detail of a single AI call including complete prompt messages, response text, tool calls, timing, and correlated logs.
 - `/api/ai/stats` aggregates AI call statistics by `provider`, `model`, `functionId`, `sessionId`, or `status` with aggregations: `count`, `avg_duration`, `p95_duration`, `total_input_tokens`, `total_output_tokens`.
+- `/api/facets?type=traces&field=attribute_keys&service=<svc>` lists span-attribute keys for a service, ranked by discriminating power (keys with many distinct values first). Pair with `field=attribute_values&key=<key>` to list values for a specific key. Used by the TUI `f` attribute filter.
 - `/api/docs` lists available documentation; `/api/docs/debug` and `/api/docs/effect` return the full skill content.
 
 ## Architecture
@@ -134,6 +135,7 @@
 - `[` / `]`: switch services
 - `s`: cycle sort mode (recent → slowest → errors)
 - `/`: enter filter mode (type to match on root operation name; `:error` restricts to failing traces)
+- `f`: open attribute filter picker (browse span-attribute keys → values for the current service; `backspace` walks back to keys; `esc` in the trace list clears the active filter)
 - `a`: pause or resume auto-refresh
 - `r`: refresh now
 - `c`: copy setup instructions for another Effect app

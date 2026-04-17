@@ -94,6 +94,7 @@ interface FacetSearch {
 	readonly type: "traces" | "logs"
 	readonly field: string
 	readonly serviceName?: string | null
+	readonly key?: string | null
 	readonly lookbackMinutes?: number
 	readonly limit?: number
 }
@@ -1454,6 +1455,49 @@ export const TelemetryStoreLive = Layer.effect(
 							ORDER BY count DESC
 							LIMIT ?
 						`).all(...(input.serviceName ? [cutoff, input.serviceName, limit] : [cutoff, limit])) as Array<{ value: string; count: number }>
+						return rows
+					}
+					if (input.field === "attribute_keys") {
+						// Count distinct traces each attribute key appears on, optionally
+						// scoped to a service. Keys with many distinct values (e.g. sessionId,
+						// user id, model) rank higher than keys that are constant across every
+						// trace (service.name, telemetry.sdk.*) — the latter can't discriminate
+						// between traces so they're useless as filters.
+						const params: Array<string | number> = [cutoff]
+						if (input.serviceName) params.push(input.serviceName)
+						params.push(limit)
+						const rows = db.query(`
+							SELECT sa.key AS value,
+							       COUNT(DISTINCT sa.trace_id) AS count,
+							       COUNT(DISTINCT sa.value) AS distinct_values
+							FROM span_attributes sa
+							JOIN spans s ON s.trace_id = sa.trace_id AND s.span_id = sa.span_id
+							WHERE s.start_time_ms >= ?
+							${input.serviceName ? "AND s.service_name = ?" : ""}
+							GROUP BY sa.key
+							ORDER BY (CASE WHEN distinct_values = 1 THEN 1 ELSE 0 END) ASC,
+							         distinct_values DESC,
+							         count DESC,
+							         value ASC
+							LIMIT ?
+						`).all(...params) as Array<{ value: string; count: number; distinct_values: number }>
+						return rows.map((row) => ({ value: row.value, count: row.count }))
+					}
+					if (input.field === "attribute_values") {
+						if (!input.key) return [] as FacetItem[]
+						const params: Array<string | number> = [input.key, cutoff]
+						if (input.serviceName) params.push(input.serviceName)
+						params.push(limit)
+						const rows = db.query(`
+							SELECT sa.value AS value, COUNT(DISTINCT sa.trace_id) AS count
+							FROM span_attributes sa
+							JOIN spans s ON s.trace_id = sa.trace_id AND s.span_id = sa.span_id
+							WHERE sa.key = ? AND s.start_time_ms >= ?
+							${input.serviceName ? "AND s.service_name = ?" : ""}
+							GROUP BY sa.value
+							ORDER BY count DESC, value ASC
+							LIMIT ?
+						`).all(...params) as Array<{ value: string; count: number }>
 						return rows
 					}
 				}

@@ -310,7 +310,10 @@ export const MotelHttpApi = HttpApi.make("MotelTelemetry")
 							Schema.annotateKey({ description: "Data source to facet: 'traces' facets span columns, 'logs' facets log columns" }),
 						),
 						field: Schema.String.pipe(
-							Schema.annotateKey({ description: "Column to facet. Traces: service, operation, status. Logs: service, severity, scope" }),
+							Schema.annotateKey({ description: "Column to facet. Traces: service, operation, status, attribute_keys, attribute_values. Logs: service, severity, scope. For attribute_values, also pass key=<attribute-name>." }),
+						),
+						key: Schema.optionalKey(Schema.String).pipe(
+							Schema.annotateKey({ description: "Attribute key to get values for (required when field=attribute_values)." }),
 						),
 						service: ServiceParam,
 						lookback: LookbackParam,
@@ -320,7 +323,7 @@ export const MotelHttpApi = HttpApi.make("MotelTelemetry")
 					error: ErrorResponse,
 				})
 					.annotate(OpenApi.Summary, "Get facet value counts")
-					.annotate(OpenApi.Description, "Returns distinct values and their counts for a given field, useful for discovering what data exists before querying. For example: ?type=logs&field=severity returns the distribution of log levels."),
+					.annotate(OpenApi.Description, "Returns distinct values and their counts for a given field, useful for discovering what data exists before querying. Examples: ?type=logs&field=severity returns log level distribution; ?type=traces&field=attribute_keys&service=opencode lists top span attribute keys; ?type=traces&field=attribute_values&key=ai.model.id lists values seen for that key."),
 
 				// AI Call endpoints
 				HttpApiEndpoint.get("aiCalls", "/api/ai/calls", {

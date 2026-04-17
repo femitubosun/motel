@@ -5,6 +5,12 @@ import type { TraceItem, TraceSummaryItem } from "../domain.ts"
 import { otelServerInstructions } from "../instructions.ts"
 import { copyToClipboard, traceUiUrl, webUiUrl } from "./format.ts"
 import {
+	activeAttrKeyAtom,
+	activeAttrValueAtom,
+	attrFacetStateAtom,
+	attrPickerIndexAtom,
+	attrPickerInputAtom,
+	attrPickerModeAtom,
 	autoRefreshAtom,
 	collapsedSpanIdsAtom,
 	detailViewAtom,
@@ -22,6 +28,7 @@ import {
 	type TraceSortMode,
 	traceStateAtom,
 } from "./state.ts"
+import { filterFacets } from "./AttrFilterModal.tsx"
 import { G_PREFIX_TIMEOUT_MS } from "./theme.ts"
 import { cycleThemeName, themeLabel } from "./theme.ts"
 import { getVisibleSpans } from "./Waterfall.tsx"
@@ -65,6 +72,12 @@ export const useKeyboardNav = (params: KeyboardNavParams) => {
 	const [filterMode, setFilterMode] = useAtom(filterModeAtom)
 	const [filterText, setFilterText] = useAtom(filterTextAtom)
 	const [traceSort, setTraceSort] = useAtom(traceSortAtom)
+	const [pickerMode, setPickerMode] = useAtom(attrPickerModeAtom)
+	const [pickerInput, setPickerInput] = useAtom(attrPickerInputAtom)
+	const [pickerIndex, setPickerIndex] = useAtom(attrPickerIndexAtom)
+	const [attrFacets] = useAtom(attrFacetStateAtom)
+	const [activeAttrKey, setActiveAttrKey] = useAtom(activeAttrKeyAtom)
+	const [activeAttrValue, setActiveAttrValue] = useAtom(activeAttrValueAtom)
 
 	const pendingGRef = useRef(false)
 	const pendingGTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -73,12 +86,12 @@ export const useKeyboardNav = (params: KeyboardNavParams) => {
 	const spanNavActive = detailView !== "service-logs" && selectedSpanIndex !== null
 	const serviceLogNavActive = detailView === "service-logs"
 
-	const stateRef = useRef({ traceState, serviceLogState, selectedServiceLogIndex, selectedTheme, selectedTraceIndex, selectedSpanIndex, selectedTraceService, detailView, showHelp, collapsedSpanIds, spanNavActive, serviceLogNavActive, filterMode, filterText, autoRefresh, traceSort, ...params })
+	const stateRef = useRef({ traceState, serviceLogState, selectedServiceLogIndex, selectedTheme, selectedTraceIndex, selectedSpanIndex, selectedTraceService, detailView, showHelp, collapsedSpanIds, spanNavActive, serviceLogNavActive, filterMode, filterText, autoRefresh, traceSort, pickerMode, pickerInput, pickerIndex, attrFacets, activeAttrKey, activeAttrValue, ...params })
 	// Keep the keyboard handler's state mirror in sync before the next paint.
 	// OpenTUI's own effect-event helper uses useLayoutEffect for this same reason:
 	// rapid repeated keypresses can otherwise observe stale selection state.
 	useLayoutEffect(() => {
-		stateRef.current = { traceState, serviceLogState, selectedServiceLogIndex, selectedTheme, selectedTraceIndex, selectedSpanIndex, selectedTraceService, detailView, showHelp, collapsedSpanIds, spanNavActive, serviceLogNavActive, filterMode, filterText, autoRefresh, traceSort, ...params }
+		stateRef.current = { traceState, serviceLogState, selectedServiceLogIndex, selectedTheme, selectedTraceIndex, selectedSpanIndex, selectedTraceService, detailView, showHelp, collapsedSpanIds, spanNavActive, serviceLogNavActive, filterMode, filterText, autoRefresh, traceSort, pickerMode, pickerInput, pickerIndex, attrFacets, activeAttrKey, activeAttrValue, ...params }
 	})
 
 	const clearPendingG = () => {
@@ -230,7 +243,8 @@ export const useKeyboardNav = (params: KeyboardNavParams) => {
 				if (s.serviceLogState.data.length === 0) return 0
 				return Math.max(0, Math.min(current + direction * serviceLogPageSize, s.serviceLogState.data.length - 1))
 			})
-		} else if (s.spanNavActive && s.selectedTrace) {
+		} else if (s.spanNavActive) {
+			if (!s.selectedTrace) return
 			const visibleCount = getVisibleSpans(s.selectedTrace.spans, s.collapsedSpanIds).length
 			setSelectedSpanIndex((current) => {
 				if (visibleCount === 0) return null
@@ -256,6 +270,66 @@ export const useKeyboardNav = (params: KeyboardNavParams) => {
 
 	useKeyboard((key) => {
 		const s = $()
+
+		// Attribute picker modal owns the keyboard while open.
+		if (s.pickerMode !== "off") {
+			const rows = filterFacets(s.attrFacets.data, s.pickerInput)
+			const clampedIndex = rows.length === 0 ? 0 : Math.max(0, Math.min(s.pickerIndex, rows.length - 1))
+			const move = (delta: number) => {
+				if (rows.length === 0) return
+				setPickerIndex(Math.max(0, Math.min(clampedIndex + delta, rows.length - 1)))
+			}
+			if (key.name === "escape") {
+				setPickerMode("off")
+				setPickerInput("")
+				setPickerIndex(0)
+				return
+			}
+			if (key.name === "up" || (key.ctrl && key.name === "p")) { move(-1); return }
+			if (key.name === "down" || (key.ctrl && key.name === "n")) { move(1); return }
+			if (key.name === "pageup") { move(-10); return }
+			if (key.name === "pagedown") { move(10); return }
+			if (key.name === "return" || key.name === "enter") {
+				const row = rows[clampedIndex]
+				if (!row) return
+				if (s.pickerMode === "keys") {
+					// Drill from keys → values for this key.
+					setActiveAttrKey(row.value)
+					setPickerMode("values")
+					setPickerInput("")
+					setPickerIndex(0)
+				} else {
+					// Apply: activeAttrKey is already set, now pin the value.
+					setActiveAttrValue(row.value)
+					setPickerMode("off")
+					setPickerInput("")
+					setPickerIndex(0)
+					s.flashNotice(`Filter: ${s.activeAttrKey}=${row.value}`)
+				}
+				return
+			}
+			if (key.name === "backspace") {
+				if (s.pickerInput.length > 0) {
+					setPickerInput(s.pickerInput.slice(0, -1))
+					setPickerIndex(0)
+					return
+				}
+				// At empty input in values mode, backspace walks back to keys.
+				if (s.pickerMode === "values") {
+					setPickerMode("keys")
+					setActiveAttrKey(null)
+					setPickerIndex(0)
+					return
+				}
+				return
+			}
+			if (key.name.length === 1 && !key.ctrl && !key.meta) {
+				setPickerInput(s.pickerInput + key.name)
+				setPickerIndex(0)
+				return
+			}
+			return
+		}
 
 		// Filter mode: capture text input
 		if (s.filterMode) {
@@ -365,6 +439,15 @@ export const useKeyboardNav = (params: KeyboardNavParams) => {
 				setSelectedSpanIndex(null)
 				return
 			}
+			// At the trace list, `esc` clears any applied attribute filter so
+			// there's a clean way back to the unfiltered list without hunting
+			// for the picker key.
+			if (s.activeAttrKey || s.activeAttrValue) {
+				setActiveAttrKey(null)
+				setActiveAttrValue(null)
+				s.flashNotice("Cleared attribute filter")
+				return
+			}
 			return
 		}
 		if (key.name === "return" || key.name === "enter") {
@@ -416,6 +499,15 @@ export const useKeyboardNav = (params: KeyboardNavParams) => {
 			setFilterMode(true)
 			return
 		}
+		if ((key.name === "f" || key.name === "F") && !key.ctrl && !key.meta) {
+			// Open attribute picker at the keys step. If a filter is already
+			// applied, reopening lets the user refine or switch.
+			setPickerMode("keys")
+			setPickerInput("")
+			setPickerIndex(0)
+			setActiveAttrKey(null)
+			return
+		}
 		if (key.name === "tab") {
 			toggleServiceLogsView()
 			return
@@ -431,12 +523,17 @@ export const useKeyboardNav = (params: KeyboardNavParams) => {
 		if (key.name === "up" || key.name === "k") {
 			if (s.serviceLogNavActive) {
 				moveServiceLogBy(-1)
-			} else if (s.spanNavActive && s.selectedTrace) {
-				const visibleCount = getVisibleSpans(s.selectedTrace.spans, s.collapsedSpanIds).length
-				setSelectedSpanIndex((current) => {
-					if (current === null || visibleCount === 0) return 0
-					return Math.max(0, current - 1)
-				})
+			} else if (s.spanNavActive) {
+				// Locked to span nav; never fall through to trace-list nav while
+				// drilled in. If the trace detail is still loading, swallow the
+				// key instead of silently leaking it to the trace list.
+				if (s.selectedTrace) {
+					const visibleCount = getVisibleSpans(s.selectedTrace.spans, s.collapsedSpanIds).length
+					setSelectedSpanIndex((current) => {
+						if (current === null || visibleCount === 0) return 0
+						return Math.max(0, current - 1)
+					})
+				}
 			} else {
 				moveTraceBy(-1)
 			}
@@ -445,12 +542,14 @@ export const useKeyboardNav = (params: KeyboardNavParams) => {
 		if (key.name === "down" || key.name === "j") {
 			if (s.serviceLogNavActive) {
 				moveServiceLogBy(1)
-			} else if (s.spanNavActive && s.selectedTrace) {
-				const visibleCount = getVisibleSpans(s.selectedTrace.spans, s.collapsedSpanIds).length
-				setSelectedSpanIndex((current) => {
-					if (current === null || visibleCount === 0) return 0
-					return Math.min(current + 1, visibleCount - 1)
-				})
+			} else if (s.spanNavActive) {
+				if (s.selectedTrace) {
+					const visibleCount = getVisibleSpans(s.selectedTrace.spans, s.collapsedSpanIds).length
+					setSelectedSpanIndex((current) => {
+						if (current === null || visibleCount === 0) return 0
+						return Math.min(current + 1, visibleCount - 1)
+					})
+				}
 			} else {
 				moveTraceBy(1)
 			}

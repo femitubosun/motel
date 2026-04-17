@@ -3,6 +3,8 @@ import { useCallback, useEffect, useMemo, useRef } from "react"
 import { config } from "../../config.js"
 import type { LogItem, TraceItem } from "../../domain.ts"
 import {
+	activeAttrKeyAtom,
+	activeAttrValueAtom,
 	autoRefreshAtom,
 	collapsedSpanIdsAtom,
 	detailViewAtom,
@@ -11,6 +13,7 @@ import {
 	initialLogState,
 	initialServiceLogState,
 	initialTraceDetailState,
+	loadFilteredTraceSummaries,
 	loadRecentTraceSummaries,
 	loadServiceLogs,
 	loadTraceDetail,
@@ -47,6 +50,8 @@ export const useTraceScreenData = () => {
 	const [autoRefresh] = useAtom(autoRefreshAtom)
 	const [filterMode] = useAtom(filterModeAtom)
 	const [filterText] = useAtom(filterTextAtom)
+	const [activeAttrKey] = useAtom(activeAttrKeyAtom)
+	const [activeAttrValue] = useAtom(activeAttrValueAtom)
 	const [traceSort] = useAtom(traceSortAtom)
 
 	const selectedTraceRef = useRef<string | null>(null)
@@ -94,7 +99,11 @@ export const useTraceScreenData = () => {
 					setSelectedTraceService(effectiveService)
 				}
 
-				const traces = effectiveService ? await loadRecentTraceSummaries(effectiveService) : []
+				const traces = effectiveService
+					? (activeAttrKey && activeAttrValue
+						? await loadFilteredTraceSummaries(effectiveService, { [activeAttrKey]: activeAttrValue })
+						: await loadRecentTraceSummaries(effectiveService))
+					: []
 				if (cancelled) return
 
 				const prevTraceId = selectedTraceRef.current
@@ -117,7 +126,7 @@ export const useTraceScreenData = () => {
 		return () => {
 			cancelled = true
 		}
-	}, [refreshNonce, selectedTraceService, setSelectedTraceIndex, setSelectedTraceService, setTraceState])
+	}, [refreshNonce, selectedTraceService, activeAttrKey, activeAttrValue, setSelectedTraceIndex, setSelectedTraceService, setTraceState])
 
 	useEffect(() => {
 		setSelectedTraceIndex((current) => {
@@ -402,6 +411,8 @@ export const useTraceScreenData = () => {
 		autoRefresh,
 		filterMode,
 		filterText,
+		activeAttrKey,
+		activeAttrValue,
 		traceSort,
 		selectedTraceSummary,
 		selectedTrace,

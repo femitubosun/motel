@@ -118,7 +118,8 @@ export const HelpModal = ({ width, height, autoRefresh, themeLabel, onClose }: {
 					{row("t", `cycle theme (${themeLabel})`)}
 					{row("tab", "toggle service logs")}
 					{row("[ ]", "switch service")}
-					{row("/", "filter traces")}
+					{row("/", "filter by root operation")}
+					{row("f", "filter traces by span attribute")}
 					{row("s", "cycle sort mode")}
 					{row("a", `auto refresh ${autoRefresh ? "on" : "off"}`)}
 					{row("r", "refresh traces")}
@@ -149,6 +150,7 @@ export const FooterHints = ({ spanNavActive, detailView, autoRefresh, width: _wi
 		["t", "theme"],
 		["tab", "logs"],
 		["/", "filter"],
+		["f", "attr"],
 		["s", "sort"],
 		["a", autoRefresh ? "live" : "paused"],
 		["?", "help"],
