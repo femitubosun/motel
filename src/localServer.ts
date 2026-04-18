@@ -11,6 +11,7 @@ import * as BunHttpServer from "@effect/platform-bun/BunHttpServer"
 import { MotelHttpApi } from "./httpApi.js"
 import { attributeFiltersFromEntries, attributeContainsFiltersFromEntries, ATTRIBUTE_FILTER_PREFIX, ATTRIBUTE_CONTAINS_PREFIX } from "./queryFilters.js"
 import { MOTEL_SERVICE_ID, MOTEL_VERSION, removeRegistryEntry, writeRegistryEntry } from "./registry.js"
+import { AsyncIngest, AsyncIngestLive } from "./services/AsyncIngest.js"
 import { TelemetryStore, TelemetryStoreLive } from "./services/TelemetryStore.js"
 import type { LogItem, TraceItem, TraceSummaryItem } from "./domain.js"
 import { lifecycleLabel } from "./ui/format.js"
@@ -38,12 +39,15 @@ const htmlResponse = (value: string) => HttpServerResponse.html(value)
 const notFoundResponse = (message = "Not found") => jsonResponse({ error: message }, 404)
 const requestUrl = (request: { readonly url: string }) => new URL(request.url, config.otel.baseUrl)
 const withStore = <A>(f: (store: TelemetryStore["Service"]) => Effect.Effect<A, Error>) => Effect.flatMap(TelemetryStore.asEffect(), f)
-const respondJson = <A>(effect: Effect.Effect<A, unknown, TelemetryStore>) =>
+// Response-building helpers are generic in R so a handler can depend
+// on TelemetryStore (query path) or AsyncIngest (worker-RPC path)
+// without forcing every handler onto the same service surface.
+const respondJson = <A, R>(effect: Effect.Effect<A, unknown, R>) =>
 	Effect.match(effect, {
 		onFailure: (error) => jsonResponse({ error: error instanceof Error ? error.message : String(error) }, 500),
 		onSuccess: (value) => jsonResponse(value),
 	})
-const respondRaw = (effect: Effect.Effect<ReturnType<typeof jsonResponse>, unknown, TelemetryStore>) =>
+const respondRaw = <R>(effect: Effect.Effect<ReturnType<typeof jsonResponse>, unknown, R>) =>
 	Effect.match(effect, {
 		onFailure: (error) => jsonResponse({ error: error instanceof Error ? error.message : String(error) }, 500),
 		onSuccess: (value) => value,
@@ -288,17 +292,27 @@ const TelemetryGroupLive = HttpApiBuilder.group(
 					version: MOTEL_VERSION,
 				}),
 			)
+			// OTLP ingest is routed to the worker thread via AsyncIngest
+			// so the main event loop stays free during heavy SQLite writes.
+			// Everything else still uses the direct TelemetryStore — reads
+			// are fast enough that IPC overhead isn't worth paying.
 			.handleRaw("ingestTraces", ({ request }) =>
 				respondRaw(
 					Effect.flatMap(request.json, (payload) =>
-						Effect.map(withStore((store) => store.ingestTraces(payload as any)), (result) => jsonResponse(result)),
+						Effect.map(
+							Effect.flatMap(AsyncIngest.asEffect(), (ingest) => ingest.ingestTraces({ payload })),
+							(result) => jsonResponse(result),
+						),
 					),
 				),
 			)
 			.handleRaw("ingestLogs", ({ request }) =>
 				respondRaw(
 					Effect.flatMap(request.json, (payload) =>
-						Effect.map(withStore((store) => store.ingestLogs(payload as any)), (result) => jsonResponse(result)),
+						Effect.map(
+							Effect.flatMap(AsyncIngest.asEffect(), (ingest) => ingest.ingestLogs({ payload })),
+							(result) => jsonResponse(result),
+						),
 					),
 				),
 			)
@@ -663,6 +677,11 @@ export const ServerLive = HttpRouter.serve(
 	// attributes off every ingest request that would have been written
 	// to the spans table as noise.
 	Layer.provide(HttpMiddleware.layerTracerDisabledForUrls(["/v1/traces", "/v1/logs"])),
+	// AsyncIngest spawns the telemetry worker — keeps the main-thread
+	// event loop free during heavy SQLite writes. Provided alongside
+	// the direct TelemetryStore so query handlers can still resolve
+	// their dependency directly.
+	Layer.provideMerge(AsyncIngestLive),
 	Layer.provideMerge(TelemetryStoreLive),
 	Layer.provideMerge(BunHttpServer.layer({
 		port: config.otel.port,
