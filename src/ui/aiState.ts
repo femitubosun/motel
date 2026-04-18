@@ -7,18 +7,18 @@ import type { LoadStatus } from "./atoms.ts"
 
 // AI chat view (full-screen when drilled into an `isAiSpan` span).
 // ---------------------------------------------------------------------
-// Navigation is chunk-based: each message/tool-call/tool-result is a
-// semantic unit the user can select with j/k and expand with enter.
-// The scroll offset is still kept so long expanded chunks can be
-// panned line-by-line if needed, but it's derived from the selected
-// chunk most of the time.
+// The main pane is a normal selectable list of semantic chunks (one row
+// per chunk, with stable list scrolling). Opening a chunk shows its full
+// content in a modal overlay that owns its own line scroll offset. This
+// feels much closer to the rest of motel than the previous in-line
+// expansion experiment.
 // ---------------------------------------------------------------------
-export const chatScrollOffsetAtom = Atom.make(0).pipe(Atom.keepAlive)
-/** Chunk id currently selected (null = first chunk). */
+/** Chunk id currently selected in the list (null = first chunk). */
 export const selectedChatChunkIdAtom = Atom.make<string | null>(null).pipe(Atom.keepAlive)
-/** Explicit expansion overrides; stored with a `!` prefix for
- *  default-open chunks the user has force-collapsed. */
-export const expandedChatChunkIdsAtom = Atom.make<ReadonlySet<string>>(new Set<string>() as ReadonlySet<string>).pipe(Atom.keepAlive)
+/** Chunk id whose detail modal is currently open. */
+export const chatDetailChunkIdAtom = Atom.make<string | null>(null).pipe(Atom.keepAlive)
+/** Line scroll offset inside the open detail modal. */
+export const chatDetailScrollOffsetAtom = Atom.make(0).pipe(Atom.keepAlive)
 
 export interface AiCallDetailState {
 	readonly status: LoadStatus

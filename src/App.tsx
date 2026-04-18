@@ -13,7 +13,8 @@ import {
 	attrPickerInputAtom,
 	attrPickerModeAtom,
 	attrFacetStateAtom,
-	expandedChatChunkIdsAtom,
+	chatDetailChunkIdAtom,
+	chatDetailScrollOffsetAtom,
 	noticeAtom,
 	persistSelectedTheme,
 	selectedAttrIndexAtom,
@@ -215,8 +216,9 @@ export const App = () => {
 	const [waterfallFilterMode] = useAtom(waterfallFilterModeAtom)
 	const [waterfallFilterText] = useAtom(waterfallFilterTextAtom)
 	const [selectedAttrIndex] = useAtom(selectedAttrIndexAtom)
-	const [selectedChatChunkId] = useAtom(selectedChatChunkIdAtom)
-	const [expandedChatChunkIds] = useAtom(expandedChatChunkIdsAtom)
+	const [selectedChatChunkId, setSelectedChatChunkId] = useAtom(selectedChatChunkIdAtom)
+	const [chatDetailChunkId, setChatDetailChunkId] = useAtom(chatDetailChunkIdAtom)
+	const [chatDetailScrollOffset, setChatDetailScrollOffset] = useAtom(chatDetailScrollOffsetAtom)
 	useAttrFilterPicker(activeAttrKey)
 
 	const layout = useAppLayout({ width, height, notice, detailView, selectedSpanIndex })
@@ -291,6 +293,17 @@ export const App = () => {
 		[selectedTrace, collapsedSpanIds],
 	)
 
+	const openChatChunkDetail = useCallback((chunkId: string) => {
+		setSelectedChatChunkId(chunkId)
+		setChatDetailChunkId(chunkId)
+		setChatDetailScrollOffset(0)
+	}, [setSelectedChatChunkId, setChatDetailChunkId, setChatDetailScrollOffset])
+
+	const closeChatChunkDetail = useCallback(() => {
+		setChatDetailChunkId(null)
+		setChatDetailScrollOffset(0)
+	}, [setChatDetailChunkId, setChatDetailScrollOffset])
+
 	const selectSpan = useCallback((index: number) => {
 		if (visibleSpans.length === 0) return
 		setSelectedSpanIndex(Math.max(0, Math.min(index, visibleSpans.length - 1)))
@@ -356,7 +369,12 @@ export const App = () => {
 				aiCallDetailState={aiCallDetailState}
 				aiChatChunks={aiChatChunks}
 				selectedChatChunkId={selectedChatChunkId}
-				expandedChatChunkIds={expandedChatChunkIds}
+				onSelectChatChunk={setSelectedChatChunkId}
+				chatDetailChunkId={chatDetailChunkId}
+				onOpenChatChunkDetail={openChatChunkDetail}
+				onCloseChatChunkDetail={closeChatChunkDetail}
+				chatDetailScrollOffset={chatDetailScrollOffset}
+				onSetChatDetailScrollOffset={(updater) => setChatDetailScrollOffset(updater)}
 				selectSpan={selectSpan}
 			/>
 			<AppFooter

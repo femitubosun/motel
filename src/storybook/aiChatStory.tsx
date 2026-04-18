@@ -15,7 +15,7 @@ import { RegistryProvider } from "@effect/atom-react"
 import { RGBA, TextAttributes, createCliRenderer } from "@opentui/core"
 import { createRoot, useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/react"
 import { useEffect, useMemo, useRef, useState } from "react"
-import { buildChunks, type Chunk, toggleChunkExpansion } from "../ui/aiChatModel.ts"
+import { buildChunks, type Chunk } from "../ui/aiChatModel.ts"
 import { AiChatView } from "../ui/AiChatView.tsx"
 import { Divider, TextLine } from "../ui/primitives.tsx"
 import type { AiCallDetailState } from "../ui/state.ts"
@@ -51,7 +51,8 @@ const StoryApp = () => {
 	const h = height ?? 32
 	const [fixtureIdx, setFixtureIdx] = useState(0)
 	const [selectedChunkId, setSelectedChunkId] = useState<string | null>(null)
-	const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
+	const [detailChunkId, setDetailChunkId] = useState<string | null>(null)
+	const [detailScrollOffset, setDetailScrollOffset] = useState(0)
 	const pendingGRef = useRef(false)
 	const quittingRef = useRef(false)
 
@@ -69,7 +70,8 @@ const StoryApp = () => {
 	// Reset selection + expansion whenever fixture changes.
 	useEffect(() => {
 		setSelectedChunkId(chunks[0]?.id ?? null)
-		setExpanded(new Set())
+		setDetailChunkId(null)
+		setDetailScrollOffset(0)
 	}, [fixtureIdx, chunks])
 
 	const move = (delta: number) => {
@@ -96,17 +98,37 @@ const StoryApp = () => {
 			if (idx < FIXTURES.length) setFixtureIdx(idx)
 			return
 		}
-		if (key.name === "j" || key.name === "down") { move(1); return }
-		if (key.name === "k" || key.name === "up") { move(-1); return }
+		if (key.name === "j" || key.name === "down") {
+			if (detailChunkId) setDetailScrollOffset((current) => current + 1)
+			else move(1)
+			return
+		}
+		if (key.name === "k" || key.name === "up") {
+			if (detailChunkId) setDetailScrollOffset((current) => Math.max(0, current - 1))
+			else move(-1)
+			return
+		}
 		if (key.name === "pagedown" || (key.ctrl && key.name === "d")) {
-			move(Math.max(1, Math.floor(chunks.length / 4)))
+			if (detailChunkId) setDetailScrollOffset((current) => current + Math.max(1, Math.floor(bodyLines / 2)))
+			else move(Math.max(1, Math.floor(chunks.length / 4)))
 			return
 		}
 		if (key.name === "pageup" || (key.ctrl && key.name === "u")) {
-			move(-Math.max(1, Math.floor(chunks.length / 4)))
+			if (detailChunkId) setDetailScrollOffset((current) => Math.max(0, current - Math.max(1, Math.floor(bodyLines / 2))))
+			else move(-Math.max(1, Math.floor(chunks.length / 4)))
 			return
 		}
 		if (key.name === "g" && !key.shift) {
+			if (detailChunkId) {
+				if (pendingGRef.current) {
+					setDetailScrollOffset(0)
+					pendingGRef.current = false
+				} else {
+					pendingGRef.current = true
+					setTimeout(() => { pendingGRef.current = false }, 500)
+				}
+				return
+			}
 			if (pendingGRef.current) {
 				if (chunks[0]) setSelectedChunkId(chunks[0].id)
 				pendingGRef.current = false
@@ -117,13 +139,24 @@ const StoryApp = () => {
 			return
 		}
 		if (key.name === "g" && key.shift) {
-			const last = chunks[chunks.length - 1]
-			if (last) setSelectedChunkId(last.id)
+			if (detailChunkId) setDetailScrollOffset(999999)
+			else {
+				const last = chunks[chunks.length - 1]
+				if (last) setSelectedChunkId(last.id)
+			}
+			return
+		}
+		if (key.name === "escape") {
+			setDetailChunkId(null)
+			setDetailScrollOffset(0)
 			return
 		}
 		if (key.name === "return" || key.name === "enter") {
 			const chunk = chunks.find((c) => c.id === selectedChunkId)
-			if (chunk && chunk.collapsible) setExpanded(toggleChunkExpansion(chunk, expanded))
+			if (chunk) {
+				setDetailChunkId(chunk.id)
+				setDetailScrollOffset(0)
+			}
 			return
 		}
 	})
@@ -162,7 +195,19 @@ const StoryApp = () => {
 				detailState={detailState}
 				chunks={chunks}
 				selectedChunkId={selectedChunkId}
-				expandedChunkIds={expanded}
+				onSelectChunk={(chunkId) => setSelectedChunkId(chunkId)}
+				detailChunkId={detailChunkId}
+				onOpenDetail={(chunkId) => {
+					setSelectedChunkId(chunkId)
+					setDetailChunkId(chunkId)
+					setDetailScrollOffset(0)
+				}}
+				onCloseDetail={() => {
+					setDetailChunkId(null)
+					setDetailScrollOffset(0)
+				}}
+				detailScrollOffset={detailScrollOffset}
+				onSetDetailScrollOffset={(updater) => setDetailScrollOffset(updater)}
 				contentWidth={Math.max(24, w - 2)}
 				bodyLines={bodyLines}
 				paneWidth={w}
@@ -174,7 +219,7 @@ const StoryApp = () => {
 					<span fg={colors.count} attributes={TextAttributes.BOLD}>j/k</span>
 					<span fg={colors.muted}>{" move  "}</span>
 					<span fg={colors.count} attributes={TextAttributes.BOLD}>enter</span>
-					<span fg={colors.muted}>{" expand  "}</span>
+					<span fg={colors.muted}>{" detail  "}</span>
 					<span fg={colors.count} attributes={TextAttributes.BOLD}>gg/G</span>
 					<span fg={colors.muted}>{" top/bottom  "}</span>
 					<span fg={colors.count} attributes={TextAttributes.BOLD}>q</span>

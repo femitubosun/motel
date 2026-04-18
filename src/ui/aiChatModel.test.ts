@@ -1,8 +1,11 @@
 import { describe, expect, it } from "bun:test"
 import {
+	buildChatListRows,
 	buildChunks,
+	chunkDetailTitle,
 	type Chunk,
 	isChunkExpanded,
+	renderChunkDetailLines,
 	renderChunks,
 	toggleChunkExpansion,
 } from "./aiChatModel.ts"
@@ -298,5 +301,47 @@ describe("renderChunks", () => {
 		const userChunkId = chunks[0]!.id
 		const taggedLines = lines.filter((l) => l.chunkId === userChunkId)
 		expect(taggedLines.length).toBeGreaterThan(0)
+	})
+})
+
+describe("buildChatListRows", () => {
+	it("emits one role divider per turn and one chunk row per chunk", () => {
+		const chunks = buildChunks(
+			makeDetail([
+				{ role: "user", content: "hi" },
+				{ role: "assistant", content: [{ type: "tool-call", toolName: "read", input: { filePath: "/x" } }] },
+			]),
+		)
+		const rows = buildChatListRows(chunks)
+		expect(rows.filter((r) => r.kind === "role-divider").map((r) => r.text)).toEqual(["USER", "ASSISTANT"])
+		expect(rows.filter((r) => r.kind === "chunk").length).toBe(chunks.length)
+	})
+
+	it("uses first body line for plain text chunks and header text for structured chunks", () => {
+		const chunks = buildChunks(
+			makeDetail([
+				{ role: "user", content: "hello there" },
+				{ role: "assistant", content: [{ type: "tool-call", toolName: "bash", input: { command: "git status" } }] },
+			]),
+		)
+		const rows = buildChatListRows(chunks).filter((r) => r.kind === "chunk")
+		expect(rows[0]!.text).toBe("hello there")
+		expect(rows[1]!.text).toContain("bash")
+	})
+})
+
+describe("chunkDetailTitle + renderChunkDetailLines", () => {
+	it("returns a readable modal title per kind", () => {
+		const chunks = buildChunks(makeDetail([{ role: "assistant", content: [{ type: "tool-call", toolName: "bash", input: { command: "git status" } }] }]))
+		expect(chunkDetailTitle(chunks[0]!)).toBe("TOOL CALL · bash")
+	})
+
+	it("wraps full detail lines for the modal", () => {
+		const chunks = buildChunks(makeDetail([{ role: "user", content: "a ".repeat(200) }]))
+		const lines = renderChunkDetailLines(chunks[0]!, 40)
+		expect(lines.length).toBeGreaterThan(1)
+		for (const line of lines) {
+			expect(line.length).toBeLessThanOrEqual(40)
+		}
 	})
 })

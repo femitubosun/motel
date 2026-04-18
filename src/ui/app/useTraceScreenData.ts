@@ -7,12 +7,12 @@ import {
 	activeAttrValueAtom,
 	aiCallDetailStateAtom,
 	autoRefreshAtom,
-	chatScrollOffsetAtom,
+	chatDetailChunkIdAtom,
+	chatDetailScrollOffsetAtom,
 	collapsedSpanIdsAtom,
 	detailViewAtom,
 	ensureAiCallDetail,
 	ensureTraceAttributeKeys,
-	expandedChatChunkIdsAtom,
 	filterModeAtom,
 	filterTextAtom,
 	getCachedAiCallDetail,
@@ -116,9 +116,9 @@ export const useTraceScreenData = () => {
 	const [refreshNonce, setRefreshNonce] = useAtom(refreshNonceAtom)
 	const [selectedSpanIndex, setSelectedSpanIndex] = useAtom(selectedSpanIndexAtom)
 	const [, setSelectedAttrIndex] = useAtom(selectedAttrIndexAtom)
-	const [, setChatScrollOffset] = useAtom(chatScrollOffsetAtom)
+	const [, setChatDetailChunkId] = useAtom(chatDetailChunkIdAtom)
+	const [, setChatDetailScrollOffset] = useAtom(chatDetailScrollOffsetAtom)
 	const [selectedChatChunkId, setSelectedChatChunkId] = useAtom(selectedChatChunkIdAtom)
-	const [, setExpandedChatChunkIds] = useAtom(expandedChatChunkIdsAtom)
 	const [aiCallDetailState, setAiCallDetailState] = useAtom(aiCallDetailStateAtom)
 	const [detailView, setDetailView] = useAtom(detailViewAtom)
 	const [showHelp, setShowHelp] = useAtom(showHelpAtom)
@@ -379,13 +379,13 @@ export const useTraceScreenData = () => {
 	// the user hit `j`/`k` again.
 	useEffect(() => {
 		setSelectedAttrIndex(0)
-		setChatScrollOffset(0)
-		// New span → drop chunk selection and any per-chunk expansion
-		// overrides. The useEffect below will re-select the first chunk
-		// once the detail loads.
+		setChatDetailChunkId(null)
+		setChatDetailScrollOffset(0)
+		// New span → drop chunk selection and any open detail modal.
+		// The effect below will re-select the first chunk once the
+		// detail loads.
 		setSelectedChatChunkId(null)
-		setExpandedChatChunkIds(new Set())
-	}, [selectedSpanIndex, selectedTraceId, setSelectedAttrIndex, setChatScrollOffset, setSelectedChatChunkId, setExpandedChatChunkIds])
+	}, [selectedSpanIndex, selectedTraceId, setSelectedAttrIndex, setChatDetailChunkId, setChatDetailScrollOffset, setSelectedChatChunkId])
 
 	// Load the parsed AI call detail for the currently-selected span when
 	// it's an AI span and the user is drilled into L2. Cached module-level

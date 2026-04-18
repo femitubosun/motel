@@ -64,6 +64,15 @@ export interface Chunk {
 	readonly toolCallId?: string
 }
 
+/** One row in the main chat list. */
+export interface ChatListRow {
+	readonly kind: "separator" | "role-divider" | "chunk"
+	readonly role: Role
+	readonly chunkId: string | null
+	readonly text: string
+	readonly meta: string | null
+}
+
 // ---------------------------------------------------------------------------
 // Content sanitisation
 //
@@ -463,6 +472,101 @@ export const buildChunks = (
 	}
 
 	return chunks
+}
+
+const firstBodyLine = (body: string) => {
+	const line = body.split("\n").find((part) => part.trim().length > 0) ?? ""
+	return line.replace(/\s+/g, " ").trim()
+}
+
+/**
+ * Stable list rows for the main chat pane. One role divider per turn,
+ * one selectable row per chunk. Plain text chunks use their first body
+ * line as the row text; structured chunks (tool call/result, reasoning,
+ * system) use their explicit header.
+ */
+export const buildChatListRows = (chunks: readonly Chunk[]): readonly ChatListRow[] => {
+	const rows: ChatListRow[] = []
+	let prevRole: Role | null = null
+	let prevMessageIndex = -1
+
+	for (const chunk of chunks) {
+		const roleChanged = chunk.role !== prevRole || chunk.messageIndex !== prevMessageIndex
+		if (roleChanged) {
+			if (rows.length > 0) {
+				rows.push({
+					kind: "separator",
+					role: "unknown",
+					chunkId: null,
+					text: "",
+					meta: null,
+				})
+			}
+			rows.push({
+				kind: "role-divider",
+				role: chunk.role,
+				chunkId: null,
+				text: chunk.role.toUpperCase(),
+				meta: null,
+			})
+		}
+
+		let text = chunk.header
+		let meta = chunk.headerMeta
+		if (!chunk.needsHeader) {
+			text = firstBodyLine(chunk.body)
+			meta = null
+		}
+		// Main list rows add their own semantic prefix glyph via
+		// `rowPrefix()` in AiChatView, so strip the transport glyph from
+		// structured chunk headers here. Otherwise tool rows render as
+		// `→ → bash ...` and results as `← ← read ...`.
+		if (chunk.kind === "tool-call" || chunk.kind === "tool-result") {
+			text = text.replace(/^[→←]\s+/, "")
+		}
+		if (chunk.kind === "system") {
+			text = "prompt"
+		}
+		if (text.length === 0) {
+			text = chunk.kind.replace(/-/g, " ")
+		}
+
+		rows.push({
+			kind: "chunk",
+			role: chunk.role,
+			chunkId: chunk.id,
+			text,
+			meta,
+		})
+
+		prevRole = chunk.role
+		prevMessageIndex = chunk.messageIndex
+	}
+
+	return rows
+}
+
+/** Human-facing title for the detail modal. */
+export const chunkDetailTitle = (chunk: Chunk): string => {
+	if (chunk.kind === "system") return "SYSTEM PROMPT"
+	if (chunk.kind === "raw-prompt") return "RAW PROMPT"
+	if (chunk.kind === "response") return "RESPONSE"
+	if (chunk.kind === "user-text") return "USER"
+	if (chunk.kind === "assistant-text") return "ASSISTANT"
+	if (chunk.kind === "reasoning") return "REASONING"
+	if (chunk.kind === "tool-call") return chunk.toolName ? `TOOL CALL · ${chunk.toolName}` : "TOOL CALL"
+	if (chunk.kind === "tool-result") return chunk.toolName ? `TOOL RESULT · ${chunk.toolName}` : "TOOL RESULT"
+	return chunk.header.toUpperCase()
+}
+
+/**
+ * Full wrapped body lines for the detail modal. Unlike the old in-line
+ * expansion view this is always the complete chunk body, never a preview.
+ */
+export const renderChunkDetailLines = (chunk: Chunk, width: number): readonly string[] => {
+	const usableWidth = Math.max(16, width)
+	const source = chunk.body.length > 0 ? chunk.body : chunk.header
+	return wrapTextLines(source, usableWidth, 4_000)
 }
 
 // ---------------------------------------------------------------------------

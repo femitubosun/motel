@@ -3,7 +3,7 @@ import { useKeyboard, useRenderer } from "@opentui/react"
 import { useEffect, useLayoutEffect, useRef } from "react"
 import { isAiSpan, type TraceItem, type TraceSummaryItem } from "../domain.ts"
 import { otelServerInstructions } from "../instructions.ts"
-import { toggleChunkExpansion, type Chunk } from "./aiChatModel.ts"
+import { renderChunkDetailLines, type Chunk } from "./aiChatModel.ts"
 import { copyToClipboard, traceUiUrl, webUiUrl } from "./format.ts"
 import {
 	activeAttrKeyAtom,
@@ -13,10 +13,10 @@ import {
 	attrPickerInputAtom,
 	attrPickerModeAtom,
 	autoRefreshAtom,
-	chatScrollOffsetAtom,
+	chatDetailChunkIdAtom,
+	chatDetailScrollOffsetAtom,
 	collapsedSpanIdsAtom,
 	detailViewAtom,
-	expandedChatChunkIdsAtom,
 	filterModeAtom,
 	filterTextAtom,
 	refreshNonceAtom,
@@ -93,6 +93,8 @@ interface KeyboardNavParams {
 const findTraceIndexById = (traces: readonly TraceSummaryItem[], traceId: string | null) =>
 	traceId === null ? -1 : traces.findIndex((trace) => trace.traceId === traceId)
 
+const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n))
+
 export const useKeyboardNav = (params: KeyboardNavParams) => {
 	const {
 		selectedTrace,
@@ -129,9 +131,9 @@ export const useKeyboardNav = (params: KeyboardNavParams) => {
 	const [waterfallFilterMode, setWaterfallFilterMode] = useAtom(waterfallFilterModeAtom)
 	const [waterfallFilterText, setWaterfallFilterText] = useAtom(waterfallFilterTextAtom)
 	const [selectedAttrIndex, setSelectedAttrIndex] = useAtom(selectedAttrIndexAtom)
-	const [chatScrollOffset, setChatScrollOffset] = useAtom(chatScrollOffsetAtom)
+	const [chatDetailChunkId, setChatDetailChunkId] = useAtom(chatDetailChunkIdAtom)
+	const [chatDetailScrollOffset, setChatDetailScrollOffset] = useAtom(chatDetailScrollOffsetAtom)
 	const [selectedChatChunkId, setSelectedChatChunkId] = useAtom(selectedChatChunkIdAtom)
-	const [expandedChatChunkIds, setExpandedChatChunkIds] = useAtom(expandedChatChunkIdsAtom)
 
 	const pendingGRef = useRef(false)
 	const pendingGTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -207,9 +209,9 @@ export const useKeyboardNav = (params: KeyboardNavParams) => {
 		attrNavActive,
 		chatNavActive,
 		selectedAttrIndex,
-		chatScrollOffset,
+		chatDetailChunkId,
+		chatDetailScrollOffset,
 		selectedChatChunkId,
-		expandedChatChunkIds,
 		filterMode,
 		filterText,
 		autoRefresh,
@@ -334,6 +336,7 @@ export const useKeyboardNav = (params: KeyboardNavParams) => {
 		const s = $()
 		const chunks = s.aiChatChunks
 		if (chunks.length === 0) return
+		if (s.chatDetailChunkId) return
 		const currentIdx = s.selectedChatChunkId
 			? chunks.findIndex((c) => c.id === s.selectedChatChunkId)
 			: 0
@@ -345,9 +348,12 @@ export const useKeyboardNav = (params: KeyboardNavParams) => {
 	const jumpToStart = () => {
 		const s = $()
 		if (s.chatNavActive) {
+			if (s.chatDetailChunkId) {
+				setChatDetailScrollOffset(0)
+				return
+			}
 			const first = s.aiChatChunks[0]
 			if (first) setSelectedChatChunkId(first.id)
-			setChatScrollOffset(0)
 			return
 		}
 		if (s.attrNavActive) {
@@ -365,6 +371,14 @@ export const useKeyboardNav = (params: KeyboardNavParams) => {
 	const jumpToEnd = () => {
 		const s = $()
 		if (s.chatNavActive) {
+			if (s.chatDetailChunkId) {
+				const openChunk = s.aiChatChunks.find((c) => c.id === s.chatDetailChunkId)
+				if (!openChunk) return
+				const lines = renderChunkDetailLines(openChunk, 80)
+				const pageSize = Math.max(4, Math.floor((s.isWideLayout ? s.wideBodyLines : s.narrowBodyLines) * 0.75))
+				setChatDetailScrollOffset(Math.max(0, lines.length - pageSize))
+				return
+			}
 			const last = s.aiChatChunks[s.aiChatChunks.length - 1]
 			if (last) setSelectedChatChunkId(last.id)
 			return
@@ -419,7 +433,8 @@ export const useKeyboardNav = (params: KeyboardNavParams) => {
 
 	const copySelectedChatChunk = () => {
 		const s = $()
-		const chunk = s.aiChatChunks.find((c) => c.id === s.selectedChatChunkId)
+		const chunkId = s.chatDetailChunkId ?? s.selectedChatChunkId
+		const chunk = s.aiChatChunks.find((c) => c.id === chunkId)
 		if (!chunk) {
 			s.flashNotice("No chunk selected")
 			return
@@ -486,9 +501,16 @@ export const useKeyboardNav = (params: KeyboardNavParams) => {
 	const pageBy = (direction: -1 | 1) => {
 		const s = $()
 		if (s.chatNavActive) {
-			// Page-by-half in chunk units. Feels like a "jump by several
-			// chunks" rather than strict line paging, which matches the
-			// semantics of the chunk cursor.
+			if (s.chatDetailChunkId) {
+				const openChunk = s.aiChatChunks.find((c) => c.id === s.chatDetailChunkId)
+				if (!openChunk) return
+				const pageSize = Math.max(1, Math.floor((s.isWideLayout ? s.wideBodyLines : s.narrowBodyLines) / 2))
+				const detailLines = renderChunkDetailLines(openChunk, 80)
+				const maxOffset = Math.max(0, detailLines.length - pageSize)
+				setChatDetailScrollOffset((current) => clamp(current + direction * pageSize, 0, maxOffset))
+				return
+			}
+			// Page-by-half in chunk units.
 			const pageSize = Math.max(1, Math.floor(s.aiChatChunks.length / 4))
 			const chunks = s.aiChatChunks
 			const currentIdx = s.selectedChatChunkId
@@ -728,6 +750,11 @@ export const useKeyboardNav = (params: KeyboardNavParams) => {
 	const handleEscapeKey = (key: KeyboardKey) => {
 		if (key.name !== "escape") return false
 		const s = $()
+		if (s.chatDetailChunkId) {
+			setChatDetailChunkId(null)
+			setChatDetailScrollOffset(0)
+			return true
+		}
 		if (s.waterfallFilterText.length > 0) {
 			setWaterfallFilterText("")
 			return true
@@ -752,14 +779,11 @@ export const useKeyboardNav = (params: KeyboardNavParams) => {
 	const handleEnterKey = (key: KeyboardKey) => {
 		if (key.name !== "return" && key.name !== "enter") return false
 		const s = $()
-		// In the AI chat view, enter toggles expansion of the selected
-		// chunk (system prompts, reasoning, tool call args, long tool
-		// results). Non-collapsible chunks no-op so the user isn't
-		// punished for habit-pressing enter.
 		if (s.chatNavActive) {
 			const chunk = s.aiChatChunks.find((c) => c.id === s.selectedChatChunkId)
-			if (chunk && chunk.collapsible) {
-				setExpandedChatChunkIds(toggleChunkExpansion(chunk, s.expandedChatChunkIds))
+			if (chunk) {
+				setChatDetailChunkId(chunk.id)
+				setChatDetailScrollOffset(0)
 			}
 			return true
 		}

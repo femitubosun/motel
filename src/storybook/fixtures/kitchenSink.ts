@@ -90,6 +90,57 @@ export const kitchenSinkFixture: ChatFixture = {
 					role: "assistant",
 					content: [{ type: "text", text: "The padding token on row 3 is using `spacing.md` instead of `spacing.sm`. Swapping it fixes the alignment." }],
 				},
+
+				// ── 8. Extra cycles below are purely to make the kitchen sink
+				//     scroll in the story so spacing/selection can be judged in
+				//     motion rather than only in the first viewport.
+				{ role: "user", content: [{ type: "text", text: "Can you also check the border color on the warning banner?" }] },
+				{
+					role: "assistant",
+					content: [
+						{ type: "text", text: "Yep — I’ll inspect the banner component and its token mapping." },
+						{ type: "tool-call", toolCallId: "tc-8", toolName: "read", input: { filePath: "/src/components/WarningBanner.tsx", offset: 1, limit: 120 } },
+					],
+				},
+				{
+					role: "tool",
+					content: [
+						{ type: "tool-result", toolCallId: "tc-8", toolName: "read", output: { type: "text", value: Array.from({ length: 25 }, (_, i) => `${i + 1}: const borderColor = tokens.warning.border // sample ${i}`).join("\n") } },
+					],
+				},
+
+				{ role: "assistant", content: [{ type: "text", text: "The banner is using the right border token, but the hover state swaps in the generic accent border. That’s why it feels inconsistent." }] },
+				{ role: "user", content: [{ type: "text", text: "What about the empty state in the sidebar — too much top padding there too?" }] },
+
+				{
+					role: "assistant",
+					content: [
+						{ type: "reasoning", text: "This is another quick component read. I should keep the answer short and just point to the token causing the extra top space." },
+						{ type: "tool-call", toolCallId: "tc-9", toolName: "grep", input: { pattern: "empty state|paddingTop|padding-top", path: "/src" } },
+					],
+				},
+				{
+					role: "tool",
+					content: [
+						{ type: "tool-result", toolCallId: "tc-9", toolName: "grep", output: { type: "text", value: "src/ui/Sidebar.tsx:44: const paddingTop = tokens.spacing.xl\nsrc/ui/Sidebar.tsx:72: <EmptyState style={{ paddingTop }} />" } },
+					],
+				},
+				{ role: "assistant", content: [{ type: "text", text: "Yes — the sidebar empty state is using `spacing.xl`. Dropping it to `spacing.lg` would align it with the rest of the panel chrome." }] },
+
+				{ role: "user", content: [{ type: "text", text: "Could you sketch the three fixes as a compact todo list?" }] },
+				{
+					role: "assistant",
+					content: [
+						{ type: "tool-call", toolCallId: "tc-10", toolName: "todowrite", input: { todos: [{ title: "fix row-3 padding token" }, { title: "fix warning banner hover border" }, { title: "reduce sidebar empty-state top padding" }] } },
+					],
+				},
+				{
+					role: "tool",
+					content: [
+						{ type: "tool-result", toolCallId: "tc-10", toolName: "todowrite", output: { type: "text", value: "ok (3 todos)" } },
+					],
+				},
+				{ role: "assistant", content: [{ type: "text", text: "1. Fix row 3 padding token. 2. Keep warning banner hover on the warning border token. 3. Reduce sidebar empty-state top padding from `xl` to `lg`." }] },
 			],
 		},
 		responseText: "The padding token on row 3 is using `spacing.md` instead of `spacing.sm`. Swapping it fixes the alignment.",

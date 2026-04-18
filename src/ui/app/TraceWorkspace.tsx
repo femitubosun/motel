@@ -76,7 +76,12 @@ interface SpanDrillInSceneProps {
 	readonly aiCallDetailState: AiCallDetailState
 	readonly aiChatChunks: readonly Chunk[]
 	readonly selectedChatChunkId: string | null
-	readonly expandedChatChunkIds: ReadonlySet<string>
+	readonly onSelectChatChunk: (chunkId: string) => void
+	readonly chatDetailChunkId: string | null
+	readonly onOpenChatChunkDetail: (chunkId: string) => void
+	readonly onCloseChatChunkDetail: () => void
+	readonly chatDetailScrollOffset: number
+	readonly onSetChatDetailScrollOffset: (updater: (current: number) => number) => void
 	readonly contentWidth: number
 	readonly bodyLines: number
 	readonly paneWidth: number
@@ -89,7 +94,12 @@ const SpanDrillInScene = ({
 	aiCallDetailState,
 	aiChatChunks,
 	selectedChatChunkId,
-	expandedChatChunkIds,
+	onSelectChatChunk,
+	chatDetailChunkId,
+	onOpenChatChunkDetail,
+	onCloseChatChunkDetail,
+	chatDetailScrollOffset,
+	onSetChatDetailScrollOffset,
 	contentWidth,
 	bodyLines,
 	paneWidth,
@@ -100,7 +110,12 @@ const SpanDrillInScene = ({
 		detailState={aiCallDetailState}
 		chunks={aiChatChunks}
 		selectedChunkId={selectedChatChunkId}
-		expandedChunkIds={expandedChatChunkIds}
+		onSelectChunk={onSelectChatChunk}
+		detailChunkId={chatDetailChunkId}
+		onOpenDetail={onOpenChatChunkDetail}
+		onCloseDetail={onCloseChatChunkDetail}
+		detailScrollOffset={chatDetailScrollOffset}
+		onSetDetailScrollOffset={onSetChatDetailScrollOffset}
 		contentWidth={contentWidth}
 		bodyLines={bodyLines}
 		paneWidth={paneWidth}
@@ -211,7 +226,12 @@ interface TraceWorkspaceProps {
 	readonly aiCallDetailState: AiCallDetailState
 	readonly aiChatChunks: readonly Chunk[]
 	readonly selectedChatChunkId: string | null
-	readonly expandedChatChunkIds: ReadonlySet<string>
+	readonly onSelectChatChunk: (chunkId: string) => void
+	readonly chatDetailChunkId: string | null
+	readonly onOpenChatChunkDetail: (chunkId: string) => void
+	readonly onCloseChatChunkDetail: () => void
+	readonly chatDetailScrollOffset: number
+	readonly onSetChatDetailScrollOffset: (updater: (current: number) => number) => void
 	readonly selectSpan: (index: number) => void
 }
 
@@ -240,7 +260,12 @@ export const TraceWorkspace = ({
 	aiCallDetailState,
 	aiChatChunks,
 	selectedChatChunkId,
-	expandedChatChunkIds,
+	onSelectChatChunk,
+	chatDetailChunkId,
+	onOpenChatChunkDetail,
+	onCloseChatChunkDetail,
+	chatDetailScrollOffset,
+	onSetChatDetailScrollOffset,
 	selectSpan,
 }: TraceWorkspaceProps) => {
 	const aiDrillIn = selectedSpan !== null && isAiSpan(selectedSpan.tags)
@@ -354,7 +379,12 @@ export const TraceWorkspace = ({
 					aiCallDetailState={aiCallDetailState}
 					aiChatChunks={aiChatChunks}
 					selectedChatChunkId={selectedChatChunkId}
-					expandedChatChunkIds={expandedChatChunkIds}
+					onSelectChatChunk={onSelectChatChunk}
+					chatDetailChunkId={chatDetailChunkId}
+					onOpenChatChunkDetail={onOpenChatChunkDetail}
+					onCloseChatChunkDetail={onCloseChatChunkDetail}
+					chatDetailScrollOffset={chatDetailScrollOffset}
+					onSetChatDetailScrollOffset={onSetChatDetailScrollOffset}
 					contentWidth={drillInContentWidth}
 					bodyLines={wideBodyLines}
 					paneWidth={contentWidth}
@@ -411,7 +441,12 @@ export const TraceWorkspace = ({
 					aiCallDetailState={aiCallDetailState}
 					aiChatChunks={aiChatChunks}
 					selectedChatChunkId={selectedChatChunkId}
-					expandedChatChunkIds={expandedChatChunkIds}
+					onSelectChatChunk={onSelectChatChunk}
+					chatDetailChunkId={chatDetailChunkId}
+					onOpenChatChunkDetail={onOpenChatChunkDetail}
+					onCloseChatChunkDetail={onCloseChatChunkDetail}
+					chatDetailScrollOffset={chatDetailScrollOffset}
+					onSetChatDetailScrollOffset={onSetChatDetailScrollOffset}
 					contentWidth={drillInContentWidth}
 					bodyLines={narrowFullBodyLines}
 					paneWidth={contentWidth}
