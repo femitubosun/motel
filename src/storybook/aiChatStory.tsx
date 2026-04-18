@@ -212,6 +212,7 @@ const StoryApp = () => {
 				bodyLines={bodyLines}
 				paneWidth={w}
 			/>
+			<Divider width={contentWidth} />
 			<box paddingLeft={1} paddingRight={1} height={FOOTER_ROWS}>
 				<TextLine>
 					<span fg={colors.count} attributes={TextAttributes.BOLD}>1-9</span>

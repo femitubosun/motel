@@ -49,11 +49,12 @@ const rowTextColor = (chunk: Chunk | null, role: Role, selected: boolean): strin
 }
 
 const splitToolRowText = (text: string): { readonly head: string; readonly tail: string | null } => {
-	const sep = text.indexOf("  ")
+	const match = text.match(/\s{2,}/)
+	const sep = match?.index ?? -1
 	if (sep < 0) return { head: text, tail: null }
 	return {
 		head: text.slice(0, sep),
-		tail: text.slice(sep + 2),
+		tail: text.slice(sep + match![0].length),
 	}
 }
 
@@ -282,7 +283,7 @@ export const AiChatView = ({
 								<TextLine bg={isSelected ? colors.selectedBg : undefined}>
 									<span fg={isSelected ? roleColor(row.role) : colors.separator}>{isSelected ? "▎" : " "}</span>
 									<span fg={headColor} attributes={isSelected ? TextAttributes.BOLD : undefined}>{`${prefix}${head}`}</span>
-									{tail ? <span fg={tailColor}>{`  ${tail}`}</span> : null}
+									{tail ? <span fg={tailColor}>{` ${tail}`}</span> : null}
 									{meta ? <><span fg={colors.muted}>{" ".repeat(gap)}</span><span fg={colors.muted}>{meta}</span></> : null}
 								</TextLine>
 							</box>
