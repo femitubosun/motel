@@ -14,6 +14,7 @@ import {
 	attrFacetStateAtom,
 	noticeAtom,
 	persistSelectedTheme,
+	selectedAttrIndexAtom,
 	selectedThemeAtom,
 	waterfallFilterModeAtom,
 	waterfallFilterTextAtom,
@@ -61,6 +62,7 @@ export const App = () => {
 	const [attrFacets] = useAtom(attrFacetStateAtom)
 	const [waterfallFilterMode] = useAtom(waterfallFilterModeAtom)
 	const [waterfallFilterText] = useAtom(waterfallFilterTextAtom)
+	const [selectedAttrIndex] = useAtom(selectedAttrIndexAtom)
 	useAttrFilterPicker(activeAttrKey)
 
 	const layout = useAppLayout({ width, height, notice, detailView, selectedSpanIndex })
@@ -205,6 +207,7 @@ export const App = () => {
 				viewLevel={viewLevel}
 				selectedSpan={selectedSpan}
 				selectedSpanLogs={selectedSpanLogs}
+				selectedAttrIndex={selectedAttrIndex}
 				selectSpan={selectSpan}
 			/>
 			{footerHeight > 0 ? (

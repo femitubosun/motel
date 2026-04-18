@@ -17,6 +17,7 @@ import {
 	filterModeAtom,
 	filterTextAtom,
 	refreshNonceAtom,
+	selectedAttrIndexAtom,
 	selectedThemeAtom,
 	selectedServiceLogIndexAtom,
 	selectedSpanIndexAtom,
@@ -114,6 +115,7 @@ export const useKeyboardNav = (params: KeyboardNavParams) => {
 	const [activeAttrValue, setActiveAttrValue] = useAtom(activeAttrValueAtom)
 	const [waterfallFilterMode, setWaterfallFilterMode] = useAtom(waterfallFilterModeAtom)
 	const [waterfallFilterText, setWaterfallFilterText] = useAtom(waterfallFilterTextAtom)
+	const [selectedAttrIndex, setSelectedAttrIndex] = useAtom(selectedAttrIndexAtom)
 
 	const pendingGRef = useRef(false)
 	const pendingGTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -121,6 +123,10 @@ export const useKeyboardNav = (params: KeyboardNavParams) => {
 
 	const spanNavActive = detailView !== "service-logs" && selectedSpanIndex !== null
 	const serviceLogNavActive = detailView === "service-logs"
+	// L2 (full-screen content view): j/k/y/gg/G operate on the tag list
+	// instead of the waterfall or trace list. Enter drilled us here from
+	// L1; esc drills back.
+	const attrNavActive = detailView === "span-detail" && selectedSpanIndex !== null
 
 	// Bracketed paste: when the terminal has bracketed paste enabled, opentui
 	// surfaces the full pasted text as a single "paste" event on keyInput.
@@ -160,12 +166,12 @@ export const useKeyboardNav = (params: KeyboardNavParams) => {
 		}
 	}, [renderer, setFilterText, setPickerInput, setPickerIndex])
 
-	const stateRef = useRef({ traceState, serviceLogState, selectedServiceLogIndex, selectedTheme, selectedTraceIndex, selectedSpanIndex, selectedTraceService, detailView, showHelp, collapsedSpanIds, spanNavActive, serviceLogNavActive, filterMode, filterText, autoRefresh, traceSort, pickerMode, pickerInput, pickerIndex, attrFacets, activeAttrKey, activeAttrValue, waterfallFilterMode, waterfallFilterText, ...params })
+	const stateRef = useRef({ traceState, serviceLogState, selectedServiceLogIndex, selectedTheme, selectedTraceIndex, selectedSpanIndex, selectedTraceService, detailView, showHelp, collapsedSpanIds, spanNavActive, serviceLogNavActive, attrNavActive, selectedAttrIndex, filterMode, filterText, autoRefresh, traceSort, pickerMode, pickerInput, pickerIndex, attrFacets, activeAttrKey, activeAttrValue, waterfallFilterMode, waterfallFilterText, ...params })
 	// Keep the keyboard handler's state mirror in sync before the next paint.
 	// OpenTUI's own effect-event helper uses useLayoutEffect for this same reason:
 	// rapid repeated keypresses can otherwise observe stale selection state.
 	useLayoutEffect(() => {
-		stateRef.current = { traceState, serviceLogState, selectedServiceLogIndex, selectedTheme, selectedTraceIndex, selectedSpanIndex, selectedTraceService, detailView, showHelp, collapsedSpanIds, spanNavActive, serviceLogNavActive, filterMode, filterText, autoRefresh, traceSort, pickerMode, pickerInput, pickerIndex, attrFacets, activeAttrKey, activeAttrValue, waterfallFilterMode, waterfallFilterText, ...params }
+		stateRef.current = { traceState, serviceLogState, selectedServiceLogIndex, selectedTheme, selectedTraceIndex, selectedSpanIndex, selectedTraceService, detailView, showHelp, collapsedSpanIds, spanNavActive, serviceLogNavActive, attrNavActive, selectedAttrIndex, filterMode, filterText, autoRefresh, traceSort, pickerMode, pickerInput, pickerIndex, attrFacets, activeAttrKey, activeAttrValue, waterfallFilterMode, waterfallFilterText, ...params }
 	})
 
 	const clearPendingG = () => {
@@ -195,8 +201,20 @@ export const useKeyboardNav = (params: KeyboardNavParams) => {
 		if (fullIndex >= 0) setSelectedTraceIndex(fullIndex)
 	}
 
+	const attrCountForSelectedSpan = () => {
+		const s = $()
+		if (!s.selectedTrace || s.selectedSpanIndex === null) return 0
+		const visible = getVisibleSpans(s.selectedTrace.spans, s.collapsedSpanIds)
+		const span = visible[s.selectedSpanIndex]
+		return span ? Object.keys(span.tags).length : 0
+	}
+
 	const jumpToStart = () => {
 		const s = $()
+		if (s.attrNavActive) {
+			setSelectedAttrIndex(0)
+			return
+		}
 		if (s.spanNavActive && s.selectedTrace) {
 			const visibleCount = getVisibleSpans(s.selectedTrace.spans, s.collapsedSpanIds).length
 			setSelectedSpanIndex(visibleCount === 0 ? null : 0)
@@ -207,6 +225,11 @@ export const useKeyboardNav = (params: KeyboardNavParams) => {
 
 	const jumpToEnd = () => {
 		const s = $()
+		if (s.attrNavActive) {
+			const count = attrCountForSelectedSpan()
+			setSelectedAttrIndex(Math.max(0, count - 1))
+			return
+		}
 		if (s.spanNavActive && s.selectedTrace) {
 			const visibleCount = getVisibleSpans(s.selectedTrace.spans, s.collapsedSpanIds).length
 			setSelectedSpanIndex(visibleCount === 0 ? null : visibleCount - 1)
@@ -260,6 +283,29 @@ export const useKeyboardNav = (params: KeyboardNavParams) => {
 		if (message) s.flashNotice(message)
 	}
 
+	const copySelectedAttrValue = () => {
+		const s = $()
+		if (!s.selectedTrace || s.selectedSpanIndex === null) return
+		const visible = getVisibleSpans(s.selectedTrace.spans, s.collapsedSpanIds)
+		const span = visible[s.selectedSpanIndex]
+		if (!span) return
+		const entries = Object.entries(span.tags)
+		const entry = entries[s.selectedAttrIndex] ?? entries[0]
+		if (!entry) {
+			s.flashNotice("No tag to copy")
+			return
+		}
+		const [key, value] = entry
+		void copyToClipboard(value)
+			.then(() => {
+				const preview = value.length > 40 ? `${value.slice(0, 39)}\u2026` : value
+				s.flashNotice(`Copied ${key}: ${preview}`)
+			})
+			.catch((error) => {
+				s.flashNotice(error instanceof Error ? error.message : String(error))
+			})
+	}
+
 	const copySelectedIds = () => {
 		const s = $()
 		if (s.serviceLogNavActive) {
@@ -311,6 +357,18 @@ export const useKeyboardNav = (params: KeyboardNavParams) => {
 
 	const pageBy = (direction: -1 | 1) => {
 		const s = $()
+		if (s.attrNavActive) {
+			const count = attrCountForSelectedSpan()
+			if (count === 0) return
+			// Attr page size: ~half the viewport in "blocks", not rows.
+			// Attributes are variable height so measuring in blocks keeps
+			// the jump feeling consistent regardless of value length.
+			const pageSize = Math.max(1, Math.floor((s.isWideLayout ? s.wideBodyLines : s.narrowBodyLines) / 4))
+			setSelectedAttrIndex((current) =>
+				Math.max(0, Math.min(current + direction * pageSize, count - 1)),
+			)
+			return
+		}
 		if (s.serviceLogNavActive) {
 			const serviceLogPageSize = Math.max(1, Math.floor((s.isWideLayout ? s.wideBodyLines : s.narrowBodyLines) * 0.5))
 			setSelectedServiceLogIndex((current) => {
@@ -702,6 +760,10 @@ export const useKeyboardNav = (params: KeyboardNavParams) => {
 			return
 		}
 		if (key.name === "up" || key.name === "k") {
+			if (s.attrNavActive) {
+				setSelectedAttrIndex((current) => Math.max(0, current - 1))
+				return
+			}
 			if (s.serviceLogNavActive) {
 				moveServiceLogBy(-1)
 			} else if (s.spanNavActive) {
@@ -721,6 +783,12 @@ export const useKeyboardNav = (params: KeyboardNavParams) => {
 			return
 		}
 		if (key.name === "down" || key.name === "j") {
+			if (s.attrNavActive) {
+				const count = attrCountForSelectedSpan()
+				if (count === 0) return
+				setSelectedAttrIndex((current) => Math.min(current + 1, count - 1))
+				return
+			}
 			if (s.serviceLogNavActive) {
 				moveServiceLogBy(1)
 			} else if (s.spanNavActive) {
@@ -794,7 +862,15 @@ export const useKeyboardNav = (params: KeyboardNavParams) => {
 			return
 		}
 		if (key.name === "y" || key.name === "Y") {
-			copySelectedIds()
+			// In the full-screen span content view, `y` copies the
+			// selected attribute's value (useful for grabbing a prompt or
+			// response chunk). Everywhere else it falls back to the
+			// existing "copy trace/span id" behaviour.
+			if (s.attrNavActive) {
+				copySelectedAttrValue()
+			} else {
+				copySelectedIds()
+			}
 			return
 		}
 		if (key.name === "c" || key.name === "C") {

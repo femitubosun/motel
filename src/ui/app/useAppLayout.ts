@@ -27,13 +27,16 @@ export const useAppLayout = ({ width, height, notice, detailView, selectedSpanIn
 		0
 	// Split ratios for the two-pane body:
 	//   L0 (trace list + trace preview):  40% / 60%  — list narrow, preview wide
-	//   L1 (waterfall + span preview):    60% / 40%  — always-on span preview,
-	//                                                  read-only at this phase
-	//   L2 (waterfall + focused detail):  50% / 50%  — detail focused (Phase 2
-	//                                                  will re-tune to 35/65)
-	// Once drilled in (L1/L2) the trace list is hidden entirely; both panes
-	// come from the trace-detail view.
-	const splitRatio = viewLevelForLayout === 2 ? 0.5 : viewLevelForLayout === 1 ? 0.6 : 0.4
+	//   L1 (waterfall + span preview):    60% / 40%  — always-on preview,
+	//                                                  read-only (enter drills
+	//                                                  one level deeper)
+	//   L2 (full-screen span content):    single pane — the waterfall is
+	//                                                  hidden entirely; the
+	//                                                  workspace reads
+	//                                                  contentWidth directly
+	//                                                  and the split ratio
+	//                                                  is irrelevant.
+	const splitRatio = viewLevelForLayout === 1 ? 0.6 : 0.4
 	const listHidden = viewLevelForLayout >= 1
 	const leftPaneWidth = !isWideLayout
 		? contentWidth

@@ -2,6 +2,7 @@ import type { LogItem, TraceItem, TraceSummaryItem } from "../../domain.ts"
 import { formatShortDate, formatTimestamp } from "../format.ts"
 import { AlignedHeaderLine, BlankRow, Divider, SeparatorColumn, TextLine } from "../primitives.tsx"
 import { ServiceLogsView } from "../ServiceLogs.tsx"
+import { SpanContentView } from "../SpanContentView.tsx"
 import { SpanDetailPane } from "../SpanDetailPane.tsx"
 import type { DetailView, LogState, ServiceLogState, TraceDetailState } from "../state.ts"
 import { colors, SEPARATOR } from "../theme.ts"
@@ -34,6 +35,7 @@ interface TraceWorkspaceProps {
 	readonly viewLevel: 0 | 1 | 2
 	readonly selectedSpan: TraceItem["spans"][number] | null
 	readonly selectedSpanLogs: readonly LogItem[]
+	readonly selectedAttrIndex: number
 	readonly selectSpan: (index: number) => void
 }
 
@@ -58,6 +60,7 @@ export const TraceWorkspace = ({
 	viewLevel,
 	selectedSpan,
 	selectedSpanLogs,
+	selectedAttrIndex,
 	selectSpan,
 }: TraceWorkspaceProps) => {
 	const {
@@ -182,37 +185,18 @@ export const TraceWorkspace = ({
 			)
 		}
 
-		// L2: waterfall-left + span detail-right. Still no list.
+		// L2: full-screen span content. Waterfall + trace list are both
+		// hidden; the selected span's tags fill the pane, scrollable with
+		// j/k. Enter drills here from L1; esc goes back.
 		return (
-			<box flexGrow={1} flexDirection="row">
-				<box width={leftPaneWidth} height={wideBodyHeight} flexDirection="column">
-					<TraceDetailsPane
-						trace={selectedTrace}
-						traceSummary={selectedTraceSummary}
-						traceStatus={traceDetailState.status}
-						traceError={traceDetailState.error}
-						traceLogsState={logState}
-						contentWidth={leftContentWidth}
-						bodyLines={wideBodyLines}
-						paneWidth={leftPaneWidth}
-						selectedSpanIndex={selectedSpanIndex}
-						collapsedSpanIds={collapsedSpanIds}
-						focused={false}
-						waterfallFilterMode={waterfallFilterMode} waterfallFilterText={waterfallFilterText} onSelectSpan={selectSpan}
-					/>
-				</box>
-				<SeparatorColumn height={wideBodyHeight} junctionChars={separatorCrossChars} />
-				<box width={rightPaneWidth} height={wideBodyHeight} flexDirection="column">
-					<SpanDetailPane
-						span={selectedSpan}
-						trace={selectedTrace}
-						logs={selectedSpanLogs}
-						contentWidth={rightContentWidth}
-						bodyLines={wideBodyLines}
-						paneWidth={rightPaneWidth}
-						focused={true}
-					/>
-				</box>
+			<box flexGrow={1} flexDirection="column">
+				<SpanContentView
+					span={selectedSpan}
+					contentWidth={Math.max(24, contentWidth - 2)}
+					bodyLines={wideBodyLines}
+					paneWidth={contentWidth}
+					selectedAttrIndex={selectedAttrIndex}
+				/>
 			</box>
 		)
 	}
@@ -284,14 +268,12 @@ export const TraceWorkspace = ({
 					waterfallFilterMode={waterfallFilterMode} waterfallFilterText={waterfallFilterText} onSelectSpan={selectSpan}
 				/>
 			) : (
-				<SpanDetailPane
+				<SpanContentView
 					span={selectedSpan}
-					trace={selectedTrace}
-					logs={selectedSpanLogs}
-					contentWidth={rightContentWidth}
+					contentWidth={Math.max(24, contentWidth - 2)}
 					bodyLines={narrowFullBodyLines}
 					paneWidth={contentWidth}
-					focused={true}
+					selectedAttrIndex={selectedAttrIndex}
 				/>
 			)}
 		</>

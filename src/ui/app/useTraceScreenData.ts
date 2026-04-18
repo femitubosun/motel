@@ -22,6 +22,7 @@ import {
 	logStateAtom,
 	persistSelectedService,
 	refreshNonceAtom,
+	selectedAttrIndexAtom,
 	selectedServiceLogIndexAtom,
 	selectedSpanIndexAtom,
 	selectedTraceIndexAtom,
@@ -45,6 +46,7 @@ export const useTraceScreenData = () => {
 	const [selectedTraceService, setSelectedTraceService] = useAtom(selectedTraceServiceAtom)
 	const [refreshNonce, setRefreshNonce] = useAtom(refreshNonceAtom)
 	const [selectedSpanIndex, setSelectedSpanIndex] = useAtom(selectedSpanIndexAtom)
+	const [, setSelectedAttrIndex] = useAtom(selectedAttrIndexAtom)
 	const [detailView, setDetailView] = useAtom(detailViewAtom)
 	const [showHelp, setShowHelp] = useAtom(showHelpAtom)
 	const [collapsedSpanIds, setCollapsedSpanIds] = useAtom(collapsedSpanIdsAtom)
@@ -294,6 +296,14 @@ export const useTraceScreenData = () => {
 		setCollapsedSpanIds(new Set())
 		setSelectedSpanIndex(null)
 	}, [selectedTraceId, setCollapsedSpanIds, setSelectedSpanIndex])
+
+	// Reset the attribute cursor whenever the span selection moves. Without
+	// this, drilling from span A (with 34 tags) to span B (with 3 tags)
+	// would leave the cursor pointing past the end of B's tag list until
+	// the user hit `j`/`k` again.
+	useEffect(() => {
+		setSelectedAttrIndex(0)
+	}, [selectedSpanIndex, selectedTraceId, setSelectedAttrIndex])
 
 	useEffect(() => {
 		if (selectedSpanIndex === null) return

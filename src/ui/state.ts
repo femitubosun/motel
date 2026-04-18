@@ -100,6 +100,10 @@ export const selectedTraceServiceAtom = Atom.make<string | null>(readLastService
 export const refreshNonceAtom = Atom.make(0).pipe(Atom.keepAlive)
 export const noticeAtom = Atom.make<string | null>(null).pipe(Atom.keepAlive)
 export const selectedSpanIndexAtom = Atom.make<number | null>(null).pipe(Atom.keepAlive)
+// Cursor inside the full-screen span content view (detailView === "span-detail").
+// Tracks which span tag is currently selected for copy / drill-in. Reset to 0
+// on each new span so the cursor doesn't point past a shorter tag list.
+export const selectedAttrIndexAtom = Atom.make(0).pipe(Atom.keepAlive)
 export const detailViewAtom = Atom.make<DetailView>("waterfall").pipe(Atom.keepAlive)
 export const showHelpAtom = Atom.make(false).pipe(Atom.keepAlive)
 export const autoRefreshAtom = Atom.make(false).pipe(Atom.keepAlive)
