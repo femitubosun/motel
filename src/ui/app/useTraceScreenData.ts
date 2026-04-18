@@ -1,18 +1,27 @@
 import { useAtom } from "@effect/atom-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { config } from "../../config.js"
-import type { LogItem, TraceItem } from "../../domain.ts"
+import type { LogItem, TraceItem, TraceSummaryItem } from "../../domain.ts"
 import {
 	activeAttrKeyAtom,
 	activeAttrValueAtom,
+	aiCallDetailStateAtom,
 	autoRefreshAtom,
+	chatScrollOffsetAtom,
 	collapsedSpanIdsAtom,
 	detailViewAtom,
+	ensureAiCallDetail,
+	ensureTraceAttributeKeys,
+	expandedChatChunkIdsAtom,
 	filterModeAtom,
 	filterTextAtom,
+	getCachedAiCallDetail,
+	initialAiCallDetailState,
 	initialLogState,
 	initialServiceLogState,
 	initialTraceDetailState,
+	invalidateAiCallDetailCache,
+	invalidateFacetCaches,
 	loadFilteredTraceSummaries,
 	loadRecentTraceSummaries,
 	loadServiceLogs,
@@ -23,6 +32,7 @@ import {
 	persistSelectedService,
 	refreshNonceAtom,
 	selectedAttrIndexAtom,
+	selectedChatChunkIdAtom,
 	selectedServiceLogIndexAtom,
 	selectedSpanIndexAtom,
 	selectedTraceIndexAtom,
@@ -30,11 +40,70 @@ import {
 	serviceLogStateAtom,
 	showHelpAtom,
 	traceDetailStateAtom,
+	type TraceSortMode,
 	traceSortAtom,
 	traceStateAtom,
 } from "../state.ts"
+import { isAiSpan } from "../../domain.ts"
+import { buildChunks, type Chunk } from "../aiChatModel.ts"
 import { parseFilterText } from "../filterParser.ts"
 import { getVisibleSpans } from "../Waterfall.tsx"
+
+const clampSelectionIndex = (index: number, length: number) => {
+	if (length === 0) return 0
+	return Math.max(0, Math.min(index, length - 1))
+}
+
+const resolveEffectiveService = (
+	services: readonly string[],
+	selectedTraceService: string | null,
+) => services.includes(selectedTraceService ?? "")
+	? selectedTraceService
+	: selectedTraceService ?? services[0] ?? config.otel.serviceName
+
+const loadTraceSummariesForService = (
+	serviceName: string | null,
+	filters: {
+		readonly activeAttrKey: string | null
+		readonly activeAttrValue: string | null
+		readonly debouncedAiText: string | null
+	},
+) => {
+	if (!serviceName) return Promise.resolve([] as readonly TraceSummaryItem[])
+	const hasAttrFilter = Boolean(filters.activeAttrKey && filters.activeAttrValue)
+	const hasAiFilter = Boolean(filters.debouncedAiText)
+	if (!hasAttrFilter && !hasAiFilter) return loadRecentTraceSummaries(serviceName)
+	return loadFilteredTraceSummaries(serviceName, {
+		attributeFilters: hasAttrFilter ? { [filters.activeAttrKey as string]: filters.activeAttrValue as string } : undefined,
+		aiText: hasAiFilter ? filters.debouncedAiText : null,
+	})
+}
+
+const applyClientTraceFilters = (
+	traces: readonly TraceSummaryItem[],
+	filterText: string,
+	parsedFilter: ReturnType<typeof parseFilterText>,
+) => filterText
+	? traces.filter((trace) => {
+		if (parsedFilter.errorOnly && trace.errorCount === 0) return false
+		if (parsedFilter.operationNeedle && !trace.rootOperationName.toLowerCase().includes(parsedFilter.operationNeedle)) return false
+		return true
+	})
+	: traces
+
+const sortTraceSummaries = (traces: readonly TraceSummaryItem[], traceSort: TraceSortMode) => {
+	if (traceSort === "recent") return traces
+	return [...traces].sort((a, b) => {
+		if (traceSort === "slowest") return b.durationMs - a.durationMs
+		if (traceSort === "errors") return b.errorCount - a.errorCount || b.startedAt.getTime() - a.startedAt.getTime()
+		return 0
+	})
+}
+
+const getSelectedVisibleSpan = (
+	spans: readonly TraceItem["spans"][number][],
+	selectedSpanIndex: number | null,
+) => selectedSpanIndex === null ? null : spans[selectedSpanIndex] ?? null
 
 export const useTraceScreenData = () => {
 	const [traceState, setTraceState] = useAtom(traceStateAtom)
@@ -47,6 +116,10 @@ export const useTraceScreenData = () => {
 	const [refreshNonce, setRefreshNonce] = useAtom(refreshNonceAtom)
 	const [selectedSpanIndex, setSelectedSpanIndex] = useAtom(selectedSpanIndexAtom)
 	const [, setSelectedAttrIndex] = useAtom(selectedAttrIndexAtom)
+	const [, setChatScrollOffset] = useAtom(chatScrollOffsetAtom)
+	const [selectedChatChunkId, setSelectedChatChunkId] = useAtom(selectedChatChunkIdAtom)
+	const [, setExpandedChatChunkIds] = useAtom(expandedChatChunkIdsAtom)
+	const [aiCallDetailState, setAiCallDetailState] = useAtom(aiCallDetailStateAtom)
 	const [detailView, setDetailView] = useAtom(detailViewAtom)
 	const [showHelp, setShowHelp] = useAtom(showHelpAtom)
 	const [collapsedSpanIds, setCollapsedSpanIds] = useAtom(collapsedSpanIdsAtom)
@@ -93,7 +166,17 @@ export const useTraceScreenData = () => {
 		serviceLogCacheRef.current.clear()
 		traceDetailInflightRef.current.clear()
 		traceLogInflightRef.current.clear()
+		invalidateFacetCaches()
+		invalidateAiCallDetailCache()
 	}, [refreshNonce])
+
+	// Pre-warm the attribute picker facet keys for the currently-selected
+	// service so pressing `f` feels instant. Fire-and-forget; errors are
+	// surfaced when the user actually opens the picker.
+	useEffect(() => {
+		if (!selectedTraceService) return
+		void ensureTraceAttributeKeys(selectedTraceService).catch(() => {})
+	}, [selectedTraceService, refreshNonce])
 
 	useEffect(() => {
 		let cancelled = false
@@ -105,28 +188,17 @@ export const useTraceScreenData = () => {
 				const services = await loadTraceServices()
 				if (cancelled) return
 
-				const effectiveService = services.includes(selectedTraceService ?? "")
-					? selectedTraceService
-					: selectedTraceService ?? services[0] ?? config.otel.serviceName
+				const effectiveService = resolveEffectiveService(services, selectedTraceService)
 
 				if (effectiveService !== selectedTraceService) {
 					setSelectedTraceService(effectiveService)
 				}
 
-				// Branch on whether any server-side filter is active. `:ai`
-				// (debouncedAiText) and the attr picker compose; either
-				// alone also uses the filtered loader. Unfiltered falls
-				// back to the fast recent-summaries path.
-				const hasAttrFilter = Boolean(activeAttrKey && activeAttrValue)
-				const hasAiFilter = Boolean(debouncedAiText)
-				const traces = effectiveService
-					? (hasAttrFilter || hasAiFilter
-						? await loadFilteredTraceSummaries(effectiveService, {
-							attributeFilters: hasAttrFilter ? { [activeAttrKey as string]: activeAttrValue as string } : undefined,
-							aiText: hasAiFilter ? debouncedAiText : null,
-						})
-						: await loadRecentTraceSummaries(effectiveService))
-					: []
+				const traces = await loadTraceSummariesForService(effectiveService, {
+					activeAttrKey,
+					activeAttrValue,
+					debouncedAiText,
+				})
 				if (cancelled) return
 
 				const prevTraceId = selectedTraceRef.current
@@ -153,14 +225,18 @@ export const useTraceScreenData = () => {
 
 	useEffect(() => {
 		setSelectedTraceIndex((current) => {
-			if (traceState.data.length === 0) return 0
-			return Math.max(0, Math.min(current, traceState.data.length - 1))
+			return clampSelectionIndex(current, traceState.data.length)
 		})
 	}, [traceState.data.length, setSelectedTraceIndex])
 
 	const selectedTraceSummary = traceState.data[selectedTraceIndex] ?? null
 	const selectedTraceId = selectedTraceSummary?.traceId ?? null
 	const selectedTrace = traceDetailState.traceId === selectedTraceId ? traceDetailState.data : null
+	const selectedVisibleSpans = useMemo(
+		() => selectedTrace ? getVisibleSpans(selectedTrace.spans, collapsedSpanIds) : [],
+		[selectedTrace, collapsedSpanIds],
+	)
+	const selectedVisibleSpan = getSelectedVisibleSpan(selectedVisibleSpans, selectedSpanIndex)
 	selectedTraceRef.current = selectedTraceId
 
 	const warmTraceDetail = useCallback((traceId: string, hydrateSelection: boolean) => {
@@ -303,7 +379,65 @@ export const useTraceScreenData = () => {
 	// the user hit `j`/`k` again.
 	useEffect(() => {
 		setSelectedAttrIndex(0)
-	}, [selectedSpanIndex, selectedTraceId, setSelectedAttrIndex])
+		setChatScrollOffset(0)
+		// New span → drop chunk selection and any per-chunk expansion
+		// overrides. The useEffect below will re-select the first chunk
+		// once the detail loads.
+		setSelectedChatChunkId(null)
+		setExpandedChatChunkIds(new Set())
+	}, [selectedSpanIndex, selectedTraceId, setSelectedAttrIndex, setChatScrollOffset, setSelectedChatChunkId, setExpandedChatChunkIds])
+
+	// Load the parsed AI call detail for the currently-selected span when
+	// it's an AI span and the user is drilled into L2. Cached module-level
+	// so re-entering the chat view for a span we already loaded is free.
+	const selectedSpanId = selectedVisibleSpan?.spanId ?? null
+	const shouldLoadAiDetail = detailView === "span-detail" && selectedVisibleSpan !== null && isAiSpan(selectedVisibleSpan.tags)
+
+	useEffect(() => {
+		if (!shouldLoadAiDetail || !selectedSpanId) {
+			setAiCallDetailState(initialAiCallDetailState)
+			return
+		}
+		const cached = getCachedAiCallDetail(selectedSpanId)
+		if (cached !== undefined) {
+			setAiCallDetailState({ status: "ready", spanId: selectedSpanId, data: cached, error: null })
+			return
+		}
+		setAiCallDetailState({ status: "loading", spanId: selectedSpanId, data: null, error: null })
+		let cancelled = false
+		ensureAiCallDetail(selectedSpanId)
+			.then((data) => {
+				if (cancelled) return
+				setAiCallDetailState({ status: "ready", spanId: selectedSpanId, data, error: null })
+			})
+			.catch((err) => {
+				if (cancelled) return
+				setAiCallDetailState({
+					status: "error",
+					spanId: selectedSpanId,
+					data: null,
+					error: err instanceof Error ? err.message : String(err),
+				})
+			})
+		return () => { cancelled = true }
+	}, [shouldLoadAiDetail, selectedSpanId, setAiCallDetailState])
+
+	// Chunk model — rebuilt whenever the detail payload changes.
+	// Width-independent, so this lives here instead of in the view.
+	const aiChatChunks = useMemo<readonly Chunk[]>(() => {
+		if (!shouldLoadAiDetail || !aiCallDetailState.data) return []
+		return buildChunks(aiCallDetailState.data)
+	}, [shouldLoadAiDetail, aiCallDetailState.data])
+
+	// Once chunks are available, pin selection to the first chunk unless
+	// the user has already chosen one. Also handles the "chunk list
+	// changed and the previous selection disappeared" case.
+	useEffect(() => {
+		if (aiChatChunks.length === 0) return
+		const stillValid = selectedChatChunkId !== null
+			&& aiChatChunks.some((c) => c.id === selectedChatChunkId)
+		if (!stillValid) setSelectedChatChunkId(aiChatChunks[0]!.id)
+	}, [aiChatChunks, selectedChatChunkId, setSelectedChatChunkId])
 
 	useEffect(() => {
 		if (selectedSpanIndex === null) return
@@ -312,11 +446,11 @@ export const useTraceScreenData = () => {
 			setDetailView("waterfall")
 			return
 		}
-		const visibleCount = getVisibleSpans(selectedTrace.spans, collapsedSpanIds).length
+		const visibleCount = selectedVisibleSpans.length
 		if (selectedSpanIndex >= visibleCount) {
 			setSelectedSpanIndex(visibleCount - 1)
 		}
-	}, [selectedTrace, selectedSpanIndex, collapsedSpanIds, setDetailView, setSelectedSpanIndex])
+	}, [selectedTrace, selectedSpanIndex, selectedVisibleSpans.length, setDetailView, setSelectedSpanIndex])
 
 	useEffect(() => {
 		const traceId = selectedTraceId
@@ -385,8 +519,7 @@ export const useTraceScreenData = () => {
 
 	useEffect(() => {
 		setSelectedServiceLogIndex((current) => {
-			if (serviceLogState.data.length === 0) return 0
-			return Math.max(0, Math.min(current, serviceLogState.data.length - 1))
+			return clampSelectionIndex(current, serviceLogState.data.length)
 		})
 	}, [serviceLogState.data.length, setSelectedServiceLogIndex])
 
@@ -394,21 +527,10 @@ export const useTraceScreenData = () => {
 	// against already-loaded summaries (no server round-trip). The `:ai`
 	// query, by contrast, is applied server-side in the load effect
 	// above so we don't need to re-filter it here.
-	const preFilterTraces = filterText
-		? traceState.data.filter((trace) => {
-			if (parsedFilter.errorOnly && trace.errorCount === 0) return false
-			if (parsedFilter.operationNeedle && !trace.rootOperationName.toLowerCase().includes(parsedFilter.operationNeedle)) return false
-			return true
-		})
-		: traceState.data
-
-	const filteredTraces = traceSort === "recent"
-		? preFilterTraces
-		: [...preFilterTraces].sort((a, b) => {
-			if (traceSort === "slowest") return b.durationMs - a.durationMs
-			if (traceSort === "errors") return b.errorCount - a.errorCount || b.startedAt.getTime() - a.startedAt.getTime()
-			return 0
-		})
+	const filteredTraces = useMemo(() => {
+		const preFiltered = applyClientTraceFilters(traceState.data, filterText, parsedFilter)
+		return sortTraceSummaries(preFiltered, traceSort)
+	}, [filterText, parsedFilter, traceSort, traceState.data])
 
 	useEffect(() => {
 		if (!selectedTraceId || filteredTraces.length === 0) return
@@ -450,5 +572,7 @@ export const useTraceScreenData = () => {
 		selectedTrace,
 		selectedTraceId,
 		filteredTraces,
+		aiCallDetailState,
+		aiChatChunks,
 	} as const
 }
